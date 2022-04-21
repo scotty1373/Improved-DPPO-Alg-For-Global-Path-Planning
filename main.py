@@ -29,7 +29,7 @@ def parse_args():
 def main(args):
     args = args
     env = RoutePlan(barrier_num=5)
-    agent = PPO(state_dim=7+11, action_dim=2, batch_size=16)
+    agent = PPO(state_dim=5+11, action_dim=2, batch_size=16)
 
     # log 初始化
     # log = log2json()
@@ -62,8 +62,8 @@ def main(args):
                 agent.update(state, action_acc, action_ori, discount_reward)
                 agent.memory.clear()
 
-            if done:
-                break
+                if done:
+                    break
 
             # 记录timestep, reward＿sum
             agent.t += 1

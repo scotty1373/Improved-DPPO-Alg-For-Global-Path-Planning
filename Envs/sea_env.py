@@ -11,7 +11,7 @@ import Box2D
 from Box2D import (b2CircleShape, b2FixtureDef,
                    b2PolygonShape, b2ContactListener,
                    b2Distance, b2RayCastCallback,
-                   b2Vec2, b2_pi)
+                   b2Vec2, b2_pi, b2Dot)
 """
 b2FixtureDef: 添加物体材质
 b2PolygonShape： 多边形构造函数，初始化数据
@@ -257,8 +257,32 @@ class RoutePlan(gym.Env, EzPickle):
         # 计算船体local vector相对于世界vector方向
         force2ship = self.ship.GetWorldVector(localVector=(force2ship, 0.0))
         # 获取力量点位置
-        force2position = self.ship.GetWorldPoint(localPoint=(1, 0))
-        self.ship.ApplyForce(force2ship, force2position, True)
+        force2position = self.ship.GetWorldPoint(localPoint=(0, 0))
+
+        # 取余操作在对负数取余时，在Python当中,如果取余的数不能够整除，那么负数取余后的结果和相同正数取余后的结果相加等于除数。
+        # 将负数角度映射到正确的范围内
+        if self.ship.angle < 0:
+            angle_unrotate = - ((b2_pi*2) - self.ship.angle % (b2_pi * 2))
+        else:
+            angle_unrotate = self.ship.angle % (b2_pi * 2)
+        # 角度映射到 [-pi, pi]
+        if angle_unrotate < -b2_pi:
+            angle_unrotate += (b2_pi * 2)
+        elif angle_unrotate > b2_pi:
+            angle_unrotate -= (b2_pi * 2)
+
+        vel_temp = self.ship.linearVelocity
+        # 计算船体行进方向的单位向量相对world向量
+        ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
+        # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
+        vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
+
+        '''***** 当船体速度减至0时，不进行后退操作 *****'''
+        if vel2ship_proj < 0:
+            # print('speed is nail')
+            pass
+        else:
+            self.ship.ApplyForce(force2ship, force2position, True)
 
         """船体转向计算"""
         orient2ship_ori = self.remap(action[1], MAIN_ORIENT_POWER)
@@ -311,17 +335,15 @@ class RoutePlan(gym.Env, EzPickle):
 
         # 状态值归一化
         state = [
-            (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-            (pos.y - VIEWPORT_H/SCALE/2) / (VIEWPORT_H/SCALE/2),
             vel.x*(VIEWPORT_W/SCALE/2)/FPS,
             vel.y*(VIEWPORT_H/SCALE/2)/FPS,
-            self.ship.angle,
+            angle_unrotate,
             end_ori,
             end_info.distance,
             [sensor_info for sensor_info in sensor_raycast['distance']],
 
         ]
-        assert len(state) == 8
+        assert len(state) == 6
 
         """Reward 计算"""
         done = False
