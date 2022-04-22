@@ -15,9 +15,13 @@ class ActorModel(nn.Module):
         super(ActorModel, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
-        layer_common = [nn.Linear(self.state_dim, 256),
-                        nn.ReLU(inplace=True)]
-        self.layer_common = nn.Sequential(*layer_common)
+        layer_mean = [nn.Linear(self.state_dim, 256),
+                      nn.ReLU(inplace=True)]
+        self.layer_mean = nn.Sequential(*layer_mean)
+
+        layer_std = [nn.Linear(self.state_dim, 256),
+                     nn.ReLU(inplace=True)]
+        self.layer_std = nn.Sequential(*layer_std)
 
         self.mean_fc1 = nn.Linear(256, 128)
         self.mean_fc1act = nn.ReLU(inplace=True)
@@ -33,15 +37,16 @@ class ActorModel(nn.Module):
         self.std_fc2act = nn.Softplus()
 
     def forward(self, state):
-        common = self.layer_common(state)
-        action_mean = self.mean_fc1(common)
+        mean = self.layer_mean(state)
+        action_mean = self.mean_fc1(mean)
         action_mean = self.mean_fc1act(action_mean)
         action_mean = self.mean_fc2(action_mean)
         action_mean = self.mean_fc2act(action_mean)
         action_mean = self.mean_fc3(action_mean)
         action_mean = self.mean_fc3act(action_mean)
 
-        action_std = self.std_fc1(common)
+        std = self.layer_std(state)
+        action_std = self.std_fc1(std)
         action_std = self.std_fc1act(action_std)
         action_std = self.std_fc2(action_std)
         action_std = self.std_fc2act(action_std)

@@ -8,7 +8,7 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-4
+LEARNING_RATE_ACTOR = 1e-5
 LEARNING_RATE_CRITIC = 1e-4
 DECAY = 0.99
 EPILSON = 0.2
@@ -125,7 +125,7 @@ class PPO:
             logprob_old = pi_dist_old.cdf(action_cat)
 
             ratio_acc = logprob[..., 0] / (logprob_old[..., 0] + 1e-8)
-            ratio_ori = logprob[..., 0] / (logprob_old[..., 0] + 1e-8)
+            ratio_ori = logprob[..., 1] / (logprob_old[..., 1] + 1e-8)
 
             if torch.any(torch.isnan(ratio_ori)) or torch.any(torch.isinf(ratio_ori)):
                 print('invalid value sigma pi')
@@ -170,11 +170,11 @@ class PPO:
 
         for i in range(self.update_actor_epoch):
             self.actor_update(state_, act_acc, act_ori, adv)
-            print(f'epochs: {self.ep}, time_steps: {self.t}, actor_loss: {self.history_actor}')
+            # print(f'epochs: {self.ep}, time_steps: {self.t}, actor_loss: {self.history_actor}')
 
         for i in range(self.update_critic_epoch):
             self.critic_update(state_, d_reward)
-            print(f'epochs: {self.ep}, time_steps: {self.t}, critic_loss: {self.history_critic}')
+            # print(f'epochs: {self.ep}, time_steps: {self.t}, critic_loss: {self.history_critic}')
         # log_dict = {'epochs': self.ep,
         #             'time_steps': {self.t},
         #             'actor_loss': {self.history_actor},

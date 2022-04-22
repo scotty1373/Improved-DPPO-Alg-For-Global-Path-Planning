@@ -24,14 +24,14 @@ from gym import spaces
 from gym.utils import seeding, EzPickle
 
 SCALE = 30
-FPS = 120
+FPS = 60
 
 VIEWPORT_W = 480
 VIEWPORT_H = 480
 
 INITIAL_RANDOM = 20
-MAIN_ENGINE_POWER = 100
-MAIN_ORIENT_POWER = 70
+MAIN_ENGINE_POWER = 150
+MAIN_ORIENT_POWER = 75
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
@@ -40,7 +40,7 @@ PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # ship
          (0.87, 0.4, 0.23), (0.58, 0.35, 0.28),  # reach area
          (0.25, 0.41, 0.88)]
 
-RAY_CAST_LASER_NUM = 11
+RAY_CAST_LASER_NUM = 8
 
 SHIP_POLY = [
     (-5, +8), (-5, -8), (0, -8),
@@ -102,10 +102,11 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=5):
+    def __init__(self, barrier_num=3, seed=None):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
+        self.seed_num = seed
 
         self.world = Box2D.b2World(gravity=(0, 0))
         self.barrier = []
@@ -118,12 +119,13 @@ class RoutePlan(gym.Env, EzPickle):
         # 障碍物生成边界
         self.barrier_bound = 0.6
         self.dead_area_bound = 0.03
+        self.ship_radius = 0.36
 
         # game状态记录
         self.game_over = None
         self.prev_reward = None
         self.draw_list = None
-        self.dist_norm = 14.48
+        self.dist_norm = 8
 
         # useful range is -1 .. +1, but spikes can be higher
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(8,), dtype=np.float32)
@@ -163,7 +165,7 @@ class RoutePlan(gym.Env, EzPickle):
                                                 (-VIEWPORT_W/SCALE/2, -VIEWPORT_H/SCALE/2),
                                                 (VIEWPORT_W/SCALE/2, -VIEWPORT_H/SCALE/2),
                                                 (VIEWPORT_W/SCALE/2, VIEWPORT_H/SCALE/2)],
-                                      friction=0.3,
+                                      friction=1.0,
                                       density=1.0)
         self.ground.CreateEdgeChain(
             [(-VIEWPORT_W/SCALE/2, VIEWPORT_H/SCALE/2),
@@ -179,12 +181,18 @@ class RoutePlan(gym.Env, EzPickle):
         shift_x, shift_y = np.linspace(start_center[0], -start_center[0], CHUNKS),\
                            np.linspace(start_center[1], (H / CHUNKS * 1/2), CHUNKS)
         shift_x, shift_y = np.meshgrid(shift_x, shift_y)
+        if self.seed_num is not None:
+            np.random.seed(self.seed_num)
         index = np.random.choice([i for i in range(CHUNKS ** 2)], self.barrier_num, replace=False)
         # print(index)
         # x, y = [], []
         for idxbr in index:
             # 控制障碍物生成位置在圈定范围之内60％部分
+            if self.seed_num is not None:
+                self.np_random.seed(self.seed_num)
             random_noise_x = self.np_random.uniform(-W*self.barrier_bound*0.05, W*self.barrier_bound*0.05)
+            if self.seed_num is not None:
+                self.np_random.seed(self.seed_num)
             random_noise_y = self.np_random.uniform(-H*self.barrier_bound*0.05, H*self.barrier_bound*0.05)
             # 通过index选择障碍物位置
             self.barrier.append(
@@ -200,8 +208,12 @@ class RoutePlan(gym.Env, EzPickle):
 
         """ship生成"""
         """!!!   已验证   !!!"""
+        if self.seed_num is not None:
+            self.np_random.seed(self.seed_num)
         initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
                                                     -W * self.barrier_bound / 2)
+        if self.seed_num is not None:
+            self.np_random.seed(self.seed_num)
         initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                     H * (1 - self.dead_area_bound))
         """
@@ -214,12 +226,12 @@ class RoutePlan(gym.Env, EzPickle):
         self.ship = self.world.CreateDynamicBody(
             position=(initial_position_x, initial_position_y),
             angle=0.0,
-            angularDamping=9,
+            angularDamping=20,
             linearDamping=0.7,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=20.0,
-                friction=0.5,
+                density=10.0,
+                friction=12,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
                 restitution=0.0)    # 0.99 bouncy
@@ -252,6 +264,13 @@ class RoutePlan(gym.Env, EzPickle):
         if not self.ship:
             return
 
+        """船体转向计算"""
+        orient2ship_ori = self.remap(action[1], MAIN_ORIENT_POWER)
+        # 计算船体local vector相对于世界vector方向
+        # orient2ship = self.ship.GetWorldVector(localVector=(0.0, orient2ship_ori))
+        # orient2position = self.ship.GetWorldPoint(localPoint=(0, 1))
+        self.ship.ApplyTorque(orient2ship_ori, True)
+
         """船体推进位置及动力大小计算"""
         force2ship = self.remap(action[0], MAIN_ENGINE_POWER)
         # 计算船体local vector相对于世界vector方向
@@ -279,29 +298,23 @@ class RoutePlan(gym.Env, EzPickle):
 
         '''***** 当船体速度减至0时，不进行后退操作 *****'''
         if vel2ship_proj < 0:
-            # print('speed is nail')
-            pass
+            if action[0] > 0:
+                self.ship.ApplyForce(force2ship, force2position, True)
+
         else:
             self.ship.ApplyForce(force2ship, force2position, True)
 
-        """船体转向计算"""
-        orient2ship_ori = self.remap(action[1], MAIN_ORIENT_POWER)
-        # 计算船体local vector相对于世界vector方向
-        orient2ship = self.ship.GetWorldVector(localVector=(0.0, orient2ship_ori))
-        orient2position = self.ship.GetWorldPoint(localPoint=(0, 1))
-        self.ship.ApplyTorque(orient2ship_ori, True)
-
-        self.world.Step(1.0/FPS, 6*30, 2*30)
+        self.world.Step(1.0 / FPS, 10, 10)
 
         # 11 维传感器数据字典
-        sensor_raycast = {"points": np.zeros((11, 2)),
-                          'normal': np.zeros((11, 2)),
-                          'distance': np.zeros((11,))}
+        sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
+                          'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
+                          'distance': np.zeros((RAY_CAST_LASER_NUM,))}
         """传感器扫描"""
-        for vect in range(11):
-            ray_angle = self.ship.angle - b2_pi/2 + (b2_pi/10 * vect)
+        for vect in range(RAY_CAST_LASER_NUM):
+            ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
             # Set up the raycast line
-            length = VIEWPORT_W/SCALE
+            length = self.ship_radius*7
             point1 = self.ship.position
             d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
             point2 = point1 + d
@@ -315,8 +328,10 @@ class RoutePlan(gym.Env, EzPickle):
                 sensor_raycast['points'][vect] = callback.point
                 sensor_raycast['normal'][vect] = callback.normal
                 sensor_raycast['distance'][vect] = Distance_Cacul(point1, callback.point)
+                if callback.fixture == self.reach_area.fixtures[0]:
+                    sensor_raycast['distance'][vect] = 7*self.ship_radius
             else:
-                sensor_raycast['distance'][vect] = 200
+                sensor_raycast['distance'][vect] = 7*self.ship_radius
         # print(sensor_raycast['distance'])
 
         pos = self.ship.position
@@ -333,17 +348,22 @@ class RoutePlan(gym.Env, EzPickle):
         end_ori = Orient_Cacul(end_info[1], end_info[0])
         # print(end_info[2])
 
+        # ship速度计算
+        vel_scalar = Distance_Cacul(vel, b2Vec2(0, 0))
+        # ship角速度
+        vel_ang = self.ship.angularVelocity
+
         # 状态值归一化
         state = [
-            vel.x*(VIEWPORT_W/SCALE/2)/FPS,
-            vel.y*(VIEWPORT_H/SCALE/2)/FPS,
-            angle_unrotate,
-            end_ori,
-            end_info.distance,
-            [sensor_info for sensor_info in sensor_raycast['distance']],
-
+            (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
+            (pos.y - VIEWPORT_H/SCALE/2) / (VIEWPORT_H/SCALE/2),
+            vel_scalar/FPS,
+            vel_ang/FPS,
+            angle_unrotate/b2_pi,
+            end_info.distance/self.dist_norm,
+            [sensor_info for sensor_info in sensor_raycast['distance']]
         ]
-        assert len(state) == 6
+        assert len(state) == 7
 
         """Reward 计算"""
         done = False
@@ -351,31 +371,44 @@ class RoutePlan(gym.Env, EzPickle):
         # ship当前位置与reach area之间距离的reward计算
         reward_dist = (self.dist_norm - end_info.distance) / self.dist_norm
         # ship与障碍物reward计算
-        ship_radius = 0.36
-        sensor_rd_record = np.zeros(11)
+        sensor_rd_record = np.zeros(RAY_CAST_LASER_NUM)
         for idx, tp_dist in enumerate(sensor_raycast['distance']):
-            if tp_dist - ship_radius <= 0:
+            if tp_dist - self.ship_radius <= 0:
+                sensor_rd_record[idx] = -10
+            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
                 sensor_rd_record[idx] = -5
-            if 0 < tp_dist - ship_radius < 0.5*ship_radius:
-                sensor_rd_record[idx] = -2
-            if ship_radius*0.5 < tp_dist - ship_radius < ship_radius*1.5:
-                sensor_rd_record[idx] = -1
-            if ship_radius*1.5 < tp_dist - ship_radius:
+            if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*3:
+                sensor_rd_record[idx] = -1.5
+            if self.ship_radius*5 < tp_dist - self.ship_radius:
                 sensor_rd_record[idx] = 0
         # 应用角度权重
-        sensor_rd_record[5] *= .2
-        sensor_rd_record[[4, 6]] *= .15
+        sensor_rd_record[5] *= .1
+        sensor_rd_record[[4, 6]] *= .1
         sensor_rd_record[[3, 7]] *= .1
-        sensor_rd_record[[2, 8]] *= .075
-        sensor_rd_record[[0, 1, 9, 10]] *= .0625
+        sensor_rd_record[[2]] *= .1
+        sensor_rd_record[[0, 1]] *= .1
         reward_coll = sensor_rd_record.sum()
 
-        reward = reward_coll + reward_dist
+        # ship角速度reward计算
+        reward_ang_vel = -abs(vel_ang)
+
+        # ship速度reward计算
+        if vel_scalar > 3:
+            reward_vel = -3
+        else:
+            reward_vel = 0
+
+        reward = reward_coll + reward_dist + reward_vel + reward_ang_vel
+        # print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_ang:{reward_ang_vel}, reward_vel:{reward_vel}')
 
         # 定义成功终止状态
-        if self.game_over:
-            done = True
-            reward = 100
+        if self.ship.contact:
+            if self.game_over:
+                reward = 100
+            # else:
+            #     reward = -50
+                done = True
+
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
         return np.hstack(state), reward, done, {}
 
@@ -401,7 +434,7 @@ class RoutePlan(gym.Env, EzPickle):
                     else:
                         self.viewer.draw_polygon(path, color=PANEL[4])
                         self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
-
+        self.viewer
         # return self.viewer.render(return_rgb_array=mode == 'rgb_array')
         return self.viewer.render(return_rgb_array=True)
 
@@ -462,7 +495,7 @@ def demo_route_plan(env, seed=None, render=False):
         #     print("observations:", " ".join(["{:+0.2f}".format(x) for x in s]))
         #     print("step {} total_reward {:+0.2f}".format(steps, total_reward))
         steps += 1
-        if done:
+        if done and env.game_over:
             break
     env.close()
     return total_reward
