@@ -8,7 +8,7 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-5
+LEARNING_RATE_ACTOR = 1e-4
 LEARNING_RATE_CRITIC = 1e-4
 DECAY = 0.99
 EPILSON = 0.2
