@@ -30,7 +30,7 @@ def parse_args():
 
 def main(args):
     args = args
-    env = RoutePlan(barrier_num=3, seed=123)
+    env = RoutePlan(barrier_num=3, seed=12)
     env.seed(13)
     agent = PPO(state_dim=6+11, action_dim=2, batch_size=16)
 

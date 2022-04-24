@@ -31,7 +31,7 @@ VIEWPORT_H = 480
 
 INITIAL_RANDOM = 20
 MAIN_ENGINE_POWER = 30
-MAIN_ORIENT_POWER = 8
+MAIN_ORIENT_POWER = 5
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
@@ -398,7 +398,7 @@ class RoutePlan(gym.Env, EzPickle):
         reward_coll = sensor_rd_record.sum()
 
         # ship角速度reward计算
-        # reward_ang_vel = -abs(vel_ang)
+        reward_ang_vel = -abs(vel_ang)
 
         # ship速度reward计算
         if vel_scalar > 3:
@@ -408,16 +408,16 @@ class RoutePlan(gym.Env, EzPickle):
 
         reward_unrotate = -abs(angle_unrotate / b2_pi)
 
-        reward = reward_coll + reward_dist + reward_unrotate
+        reward = reward_coll + reward_dist + reward_unrotate + reward_ang_vel
         # print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_vel:{reward_vel}')
 
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
                 reward = 100
-            # else:
-            #     reward = -10
-                done = True
+            else:
+                reward = -10
+            done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
         return np.hstack(state), reward, done, {}
