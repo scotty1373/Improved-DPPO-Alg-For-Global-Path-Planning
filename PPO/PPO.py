@@ -9,7 +9,7 @@ import numpy as np
 import copy
 
 LEARNING_RATE_ACTOR = 1e-4
-LEARNING_RATE_CRITIC = 1e-4
+LEARNING_RATE_CRITIC = 5e-4
 DECAY = 0.99
 EPILSON = 0.2
 torch.autograd.set_detect_anomaly(True)
@@ -30,6 +30,7 @@ class PPO:
         self.decay_index = DECAY
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
+        self.clip_ratio = 0.2
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
 
@@ -43,7 +44,7 @@ class PPO:
 
     def _init(self, state_dim, action_dim, train_batch):
         self.pi = ActorModel(state_dim, action_dim)
-        self.piold = ActorModel(state_dim, action_dim)
+        # self.piold = ActorModel(state_dim, action_dim)
         self.v = CriticModel(state_dim, action_dim)
         self.memory = deque(maxlen=train_batch)
 
@@ -51,21 +52,13 @@ class PPO:
         obs_ = torch.Tensor(copy.deepcopy(obs_))
         self.pi.eval()
         with torch.no_grad():
-            ac_mean, ac_sigma = self.pi(obs_)
-
-            # 增加1e-8防止正态分布计算时除法越界
-            dist = Normal(ac_mean.cpu().detach(), ac_sigma.cpu().detach() + 1e-8)
-
-            action_sample = dist.sample()
-            prob_acc = torch.clamp(action_sample[..., 0], -1, 1).cpu().detach().numpy()
-            prob_ori = torch.clamp(action_sample[..., 1], -1, 1).cpu().detach().numpy()
-            # log_prob = dist.log_prob(torch.stack((prob_acc, prob_ori), dim=0))
+            action, action_logprob, dist = self.pi(obs_)
         self.pi.train()
 
-        return prob_acc, prob_ori, ac_mean.cpu().detach().numpy()
+        return action.cpu().detach().numpy(), action_logprob.detach().numpy(), dist
 
-    def state_store_memory(self, s, acc, ori, r, logprob_acc, logprob_ori):
-        self.memory.append((s, acc, ori, r, logprob_acc, logprob_ori))
+    def state_store_memory(self, s, act, r, logprob):
+        self.memory.append((s, act, r, logprob))
 
     # 计算reward衰减，根据马尔可夫过程，从最后一个reward向前推
     def decayed_reward(self, singal_state_frame, reward_):
@@ -99,77 +92,53 @@ class PPO:
         self.history_critic = critic_loss.detach().item()
         self.c_opt.zero_grad()
         critic_loss.backward(retain_graph=True)
-        # torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=1, norm_type=2)
+        torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=0.5, norm_type=2)
         self.c_opt.step()
 
-    def actor_update(self, state, action_acc, action_ori, advantage):
-        with torch.autograd.detect_anomaly():
-            action_ori = torch.FloatTensor(action_ori)
-            action_acc = torch.FloatTensor(action_acc)
-            action_cat = torch.stack((action_acc, action_ori), dim=1)
+    def actor_update(self, state, action, logprob_old, advantage):
+        action = torch.FloatTensor(action)
+        logprob_old = torch.FloatTensor(logprob_old)
 
-            pi_mult_m, pi_mult_s = self.pi(state)
-            pi_mult_m_old, pi_mult_s_old = self.piold(state)
+        _, _, pi_dist = self.pi(state)
+        logprob = pi_dist.log_prob(action)
+        # logprob_old = torch.FloatTensor(logprob_old).unsqueeze(-1)
+        #
+        # _, _, pi_dist = self.pi(state)
+        # logprob = pi_dist.log_prob(action).sum(-1).unsqueeze(-1)
 
-            if torch.any(torch.isnan(pi_mult_s)):
-                print('invalid value sigma pi')
+        pi_entropy = pi_dist.entropy().mean(dim=1).detach()
 
-            if torch.any(torch.isnan(pi_mult_m)):
-                print('invalid value mean pi')
+        assert logprob.shape == logprob_old.shape
+        ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
 
-            # 增加1e-8防止正态分布计算时除法越界
-            pi_dist = Normal(pi_mult_m, pi_mult_s + 1e-8)
-            pi_dist_old = Normal(pi_mult_m_old.detach(), pi_mult_s_old.detach() + 1e-8)
+        # 切换ratio中inf值为固定值，防止inf进入backward计算
+        # ratio_ori = torch.where(torch.isinf(ratio_ori), torch.full_like(ratio_ori, 3), ratio_ori)
 
-            logprob = pi_dist.cdf(action_cat)
-            logprob_old = pi_dist_old.cdf(action_cat)
+        # 使shape匹配，防止元素相乘发生广播问题
+        ratio = torch.unsqueeze(ratio, dim=1)
+        assert ratio.shape == advantage.shape
+        surrogate1_acc = ratio * advantage
+        surrogate2_acc = torch.clamp(ratio, 1-self.epilson, 1+self.epilson) * advantage
 
-            ratio_acc = logprob[..., 0] / (logprob_old[..., 0] + 1e-8)
-            ratio_ori = logprob[..., 1] / (logprob_old[..., 1] + 1e-8)
+        actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
 
-            if torch.any(torch.isnan(ratio_ori)) or torch.any(torch.isinf(ratio_ori)):
-                print('invalid value sigma pi')
-            if torch.any(torch.isnan(ratio_acc)) or torch.any(torch.isinf(ratio_acc)):
-                print('invalid value sigma pi')
+        self.a_opt.zero_grad()
+        actor_loss = -torch.mean(actor_loss)
 
-            # 切换ratio中inf值为固定值，防止inf进入backward计算
-            # ratio_ori = torch.where(torch.isinf(ratio_ori), torch.full_like(ratio_ori, 3), ratio_ori)
-            '''不确定混合acc和ori的mean和sigma梯度进行计算是否会造成梯度冲突'''
-            # 使shape匹配，防止元素相乘发生广播问题
-            ratio_acc, ratio_ori = ratio_acc[..., None], ratio_ori[..., None]
-            assert ratio_acc.shape == advantage.shape
-            surrogate1_acc = ratio_acc * advantage
-            surrogate2_acc = torch.clamp(ratio_acc, 1-self.epilson, 1+self.epilson) * advantage
+        actor_loss.backward(retain_graph=True)
+        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
 
-            assert ratio_ori.shape == advantage.shape
-            surrogate1_ori = ratio_ori * advantage
-            surrogate2_ori = torch.clamp(ratio_ori, 1-self.epilson, 1+self.epilson) * advantage
+        self.a_opt.step()
+        self.history_actor = actor_loss.detach().item()
 
-            actor_loss_acc = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
-            actor_loss_ori = torch.min(torch.cat((surrogate1_ori, surrogate2_ori), dim=1), dim=1)[0]
-
-            self.a_opt.zero_grad()
-            actor_loss = actor_loss_ori + actor_loss_acc
-            actor_loss = -torch.mean(actor_loss)
-
-            actor_loss.backward(retain_graph=True)
-            # torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=1, norm_type=2)
-
-            # print(self.pi.ori_meanDense4.weight.grad)
-
-            self.a_opt.step()
-            self.history_actor = actor_loss.detach().item()
-
-    def update(self, state, action_acc, action_ori, discount_reward_):
-        self.hard_update(self.pi, self.piold)
+    def update(self, state, action, logprob, discount_reward_):
         state_ = torch.Tensor(state)
-        act_acc = action_acc
-        act_ori = action_ori
+        act = action
         d_reward = np.concatenate(discount_reward_).reshape(-1, 1)
-        adv = self.advantage_calcu(d_reward, state_).detach()
+        adv = self.advantage_calcu(d_reward, state_)
 
         for i in range(self.update_actor_epoch):
-            self.actor_update(state_, act_acc, act_ori, adv)
+            self.actor_update(state_, act, logprob, adv)
             # print(f'epochs: {self.ep}, time_steps: {self.t}, actor_loss: {self.history_actor}')
 
         for i in range(self.update_critic_epoch):

@@ -30,8 +30,8 @@ VIEWPORT_W = 480
 VIEWPORT_H = 480
 
 INITIAL_RANDOM = 20
-MAIN_ENGINE_POWER = 20
-MAIN_ORIENT_POWER = 5
+MAIN_ENGINE_POWER = 50
+MAIN_ORIENT_POWER = 4
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
@@ -297,12 +297,13 @@ class RoutePlan(gym.Env, EzPickle):
         vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
 
         '''***** 当船体速度减至0时，不进行后退操作 *****'''
-        if vel2ship_proj < 0:
-            if action[0] > 0:
-                self.ship.ApplyForce(force2ship, force2position, True)
-
-        else:
-            self.ship.ApplyForce(force2ship, force2position, True)
+        # if vel2ship_proj < 0:
+        #     if action[0] > 0:
+        #         self.ship.ApplyForce(force2ship, force2position, True)
+        #
+        # else:
+        #     self.ship.ApplyForce(force2ship, force2position, True)
+        self.ship.ApplyForce(force2ship, force2position, True)
 
         self.world.Step(1.0 / FPS, 10, 10)
 
@@ -314,7 +315,7 @@ class RoutePlan(gym.Env, EzPickle):
         for vect in range(RAY_CAST_LASER_NUM):
             ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
             # Set up the raycast line
-            length = self.ship_radius*7
+            length = self.ship_radius*10
             point1 = self.ship.position
             d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
             point2 = point1 + d
@@ -354,16 +355,21 @@ class RoutePlan(gym.Env, EzPickle):
         vel_ang = self.ship.angularVelocity
 
         # 状态值归一化
+        # state = [
+        #     (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
+        #     (pos.y - VIEWPORT_H/SCALE/2) / (VIEWPORT_H/SCALE/2),
+        #     vel_scalar/FPS,
+        #     angle_unrotate/b2_pi,
+        #     end_info.distance/self.dist_norm,
+        #     [sensor_info for sensor_info in sensor_raycast['distance']]
+        # ]
         state = [
-            (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-            (pos.y - VIEWPORT_H/SCALE/2) / (VIEWPORT_H/SCALE/2),
             vel_scalar/FPS,
-            vel_ang/FPS,
             angle_unrotate/b2_pi,
             end_info.distance/self.dist_norm,
             [sensor_info for sensor_info in sensor_raycast['distance']]
         ]
-        assert len(state) == 7
+        assert len(state) == 4
 
         """Reward 计算"""
         done = False
@@ -378,19 +384,17 @@ class RoutePlan(gym.Env, EzPickle):
             if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
                 sensor_rd_record[idx] = -5
             if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*3:
-                sensor_rd_record[idx] = -1.5
+                sensor_rd_record[idx] = -2
             if self.ship_radius*5 < tp_dist - self.ship_radius:
                 sensor_rd_record[idx] = 0
         # 应用角度权重
-        sensor_rd_record[5] *= .1
-        sensor_rd_record[[4, 6]] *= .1
-        sensor_rd_record[[3, 7]] *= .1
-        sensor_rd_record[[2]] *= .1
-        sensor_rd_record[[0, 1]] *= .1
+        sensor_rd_record[[0, 4, 5, 6, 7]] *= .1
+        sensor_rd_record[[1, 2]] *= .15
+        sensor_rd_record[3] *= .2
         reward_coll = sensor_rd_record.sum()
 
         # ship角速度reward计算
-        reward_ang_vel = -abs(vel_ang)
+        # reward_ang_vel = -abs(vel_ang)
 
         # ship速度reward计算
         if vel_scalar > 3:
@@ -398,8 +402,10 @@ class RoutePlan(gym.Env, EzPickle):
         else:
             reward_vel = 0
 
-        reward = reward_coll + reward_dist + reward_vel + reward_ang_vel
-        # print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_ang:{reward_ang_vel}, reward_vel:{reward_vel}')
+        reward_unrotate = -abs(angle_unrotate / b2_pi)
+
+        reward = reward_coll + reward_dist + reward_vel + reward_unrotate
+        print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_vel:{reward_vel}')
 
         # 定义成功终止状态
         if self.ship.contact:
@@ -407,9 +413,6 @@ class RoutePlan(gym.Env, EzPickle):
                 reward = 100
             else:
                 reward = -10
-            done = True
-        if abs(vel_ang) > 15:
-            reward = -50
             done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
@@ -437,7 +440,6 @@ class RoutePlan(gym.Env, EzPickle):
                     else:
                         self.viewer.draw_polygon(path, color=PANEL[4])
                         self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
-        self.viewer
         # return self.viewer.render(return_rgb_array=mode == 'rgb_array')
         return self.viewer.render(return_rgb_array=True)
 

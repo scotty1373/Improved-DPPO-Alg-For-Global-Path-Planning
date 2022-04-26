@@ -19,22 +19,17 @@ class ActorModel(nn.Module):
                       nn.ReLU(inplace=True)]
         self.layer_mean = nn.Sequential(*layer_mean)
 
-        layer_std = [nn.Linear(self.state_dim, 256),
-                     nn.ReLU(inplace=True)]
-        self.layer_std = nn.Sequential(*layer_std)
-
         self.mean_fc1 = nn.Linear(256, 128)
         self.mean_fc1act = nn.ReLU(inplace=True)
         self.mean_fc2 = nn.Linear(128, 64)
         self.mean_fc2act = nn.ReLU(inplace=True)
         self.mean_fc3 = nn.Linear(64, self.action_dim)
-        nn.init.uniform_(self.mean_fc3.weight, -3e-3, 3e-3)
+        nn.init.uniform_(self.mean_fc3.weight, -3e-3, 0)
         self.mean_fc3act = nn.Tanh()
 
-        self.std_fc1 = nn.Linear(256, 128)
-        self.std_fc1act = nn.ReLU(inplace=True)
-        self.std_fc2 = nn.Linear(128, self.action_dim)
-        self.std_fc2act = nn.Softplus()
+        # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
+        self.log_std = nn.Linear(self.state_dim, 64)
+        self.log_std1 = nn.Linear(64, self.action_dim)
 
     def forward(self, state):
         mean = self.layer_mean(state)
@@ -45,19 +40,23 @@ class ActorModel(nn.Module):
         action_mean = self.mean_fc3(action_mean)
         action_mean = self.mean_fc3act(action_mean)
 
-        std = self.layer_std(state)
-        action_std = self.std_fc1(std)
-        action_std = self.std_fc1act(action_std)
-        action_std = self.std_fc2(action_std)
-        action_std = self.std_fc2act(action_std)
-
-        return action_mean, action_std
-
-    def get_action(self, state):
-        action_mean, action_cov = self.forward(state)
-        dist = Normal(action_mean, action_cov)
+        action_std = self.log_std(state)
+        action_std = nn.functional.relu(action_std, inplace=True)
+        action_std = self.log_std1(action_std)
+        action_std = nn.functional.softplus(action_std)
+        # 广播机制匹配维度
+        """由于是对log_std求exp，所以在计算Normal的时候不需要加1e-8"""
+        # action_std = torch.exp(self.log_std)
+        dist = Normal(action_mean, action_std)
         action_sample = dist.sample()
-        return action_sample
+        action_sample = torch.clamp(action_sample, -1, 1)
+        # try:
+        #     action_sample[..., 1] = torch.clamp(action_sample[..., 1], -0.7, 0.7)
+        # except IndexError as e:
+        #     print('e')
+        action_logprob = dist.log_prob(action_sample)
+
+        return action_sample, action_logprob, dist
 
 
 class CriticModel(nn.Module):
@@ -72,8 +71,7 @@ class CriticModel(nn.Module):
             nn.ReLU(inplace=True),
             layer_init(nn.Linear(256, 64)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(64, 1)),
-            nn.Softplus())
+            layer_init(nn.Linear(64, 1)))
 
     def forward(self, state):
         value = self.fc(state)
