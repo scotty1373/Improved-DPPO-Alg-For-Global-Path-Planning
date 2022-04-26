@@ -11,7 +11,7 @@ import copy
 LEARNING_RATE_ACTOR = 1e-4
 LEARNING_RATE_CRITIC = 5e-4
 DECAY = 0.99
-EPILSON = 0.2
+EPILSON = 0.15
 # torch.autograd.set_detect_anomaly(True)
 
 

@@ -11,7 +11,7 @@ import torch
 from sys import platform
 
 TIMESTAMP = str(round(time.time()))
-KEYs_Train = ['mode', 'epochs', 'timestep', 'ep_reward']
+KEYs_Train = ['mode', 'epochs', 'timestep', 'reward']
 
 FILE_NAME = ['../log/1647000521/train_log.json', '../log/1647002312/train_log.json']
 
@@ -21,16 +21,15 @@ class log2json:
         self.root_path = os.getcwd()
         self.log_path = os.path.join(self.root_path, log_path, TIMESTAMP)
 
-        assert os.path.exists(os.path.join(self.root_path, log_path))
-
         # 创建当前训练log保存目录
         try:
             os.makedirs(self.log_path)
         except FileExistsError as e:
             print(e)
 
+        filename = filename + TIMESTAMP
         if type_json:
-            filename = os.path.join(self.log_path, filename + '.json')
+            filename = os.path.join(self.log_path, filename + '.json').replace('\\', '/')
             self.fp = open(filename, 'w')
         else:
             filename = os.path.join(self.log_path, filename + '.csv')
