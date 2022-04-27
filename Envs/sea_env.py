@@ -30,8 +30,8 @@ VIEWPORT_W = 480
 VIEWPORT_H = 480
 
 INITIAL_RANDOM = 20
-MAIN_ENGINE_POWER = 30
-MAIN_ORIENT_POWER = 5
+MAIN_ENGINE_POWER = 50
+MAIN_ORIENT_POWER = 10
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
@@ -40,7 +40,7 @@ PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # shipddddd
          (0.87, 0.4, 0.23), (0.58, 0.35, 0.28),  # reach area
          (0.25, 0.41, 0.88)]
 
-RAY_CAST_LASER_NUM = 11
+RAY_CAST_LASER_NUM = 26
 
 SHIP_POLY = [
     (-5, +8), (-5, -8), (0, -8),
@@ -227,10 +227,10 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=0.7,
+            linearDamping=5,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=10.0,
+                density=5.0,
                 friction=12,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -244,6 +244,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         """抵达点生成"""
         # 设置抵达点位置
+        """        
         reach_center_x = W/2 - W*0.05
         reach_center_y = H*0.5
         # 设置抵达点长宽，建立形状
@@ -253,6 +254,16 @@ class RoutePlan(gym.Env, EzPickle):
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=rect))
+        self.reach_area.color = PANEL[4]
+        """
+
+        reach_center_x = W/2
+        reach_center_y = H*0.5
+        circle_shape = b2CircleShape(radius=1.2)
+        self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
+                                                      fixtures=b2FixtureDef(
+                                                          shape=circle_shape
+                                                      ))
         self.reach_area.color = PANEL[4]
         self.draw_list = [self.ship] + self.barrier + [self.reach_area] + [self.ground]
 
@@ -315,7 +326,7 @@ class RoutePlan(gym.Env, EzPickle):
         for vect in range(RAY_CAST_LASER_NUM):
             ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
             # Set up the raycast line
-            length = self.ship_radius*7
+            length = self.ship_radius*20
             point1 = self.ship.position
             d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
             point2 = point1 + d
@@ -330,9 +341,9 @@ class RoutePlan(gym.Env, EzPickle):
                 sensor_raycast['normal'][vect] = callback.normal
                 sensor_raycast['distance'][vect] = Distance_Cacul(point1, callback.point)
                 if callback.fixture == self.reach_area.fixtures[0]:
-                    sensor_raycast['distance'][vect] = 7*self.ship_radius
+                    sensor_raycast['distance'][vect] = 25*self.ship_radius
             else:
-                sensor_raycast['distance'][vect] = 7*self.ship_radius
+                sensor_raycast['distance'][vect] = 20*self.ship_radius
         # print(sensor_raycast['distance'])
 
         pos = self.ship.position
@@ -365,36 +376,47 @@ class RoutePlan(gym.Env, EzPickle):
         # ]
         state = [
             (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-            (pos.y - VIEWPORT_H/SCALE/2) / (VIEWPORT_H/SCALE/2),
+            (pos.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
             vel.x/FPS,
             vel.y/FPS,
             angle_unrotate/b2_pi,
+            end_ori,
+            (self.reach_area.position.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
+            (self.reach_area.position.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
             end_info.distance/self.dist_norm,
             [sensor_info for sensor_info in sensor_raycast['distance']]
         ]
-        assert len(state) == 7
+        assert len(state) == 10
 
         """Reward 计算"""
         done = False
 
         # ship当前位置与reach area之间距离的reward计算
-        reward_dist = (self.dist_norm - end_info.distance) / self.dist_norm
+        reward_dist = -end_info.distance / self.dist_norm * 5
         # ship与障碍物reward计算
         sensor_rd_record = np.zeros(RAY_CAST_LASER_NUM)
         for idx, tp_dist in enumerate(sensor_raycast['distance']):
             if tp_dist - self.ship_radius <= 0:
-                sensor_rd_record[idx] = -10
-            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
                 sensor_rd_record[idx] = -5
+            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
+                sensor_rd_record[idx] = -3
             if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*3:
-                sensor_rd_record[idx] = -2
+                sensor_rd_record[idx] = -1.5
             if self.ship_radius*5 < tp_dist - self.ship_radius:
                 sensor_rd_record[idx] = 0
         # 应用角度权重
-        # sensor_rd_record[[0, 4, 5, 6, 7]] *= .1
-        # sensor_rd_record[[1, 2]] *= .15
-        # sensor_rd_record[3] *= .2
-        sensor_rd_record *= 0.05
+        # 前部权重累加
+        sensor_rd_record[6] *= 0.2
+        sensor_rd_record[[5, 7]] *= 0.15
+        sensor_rd_record[[4, 8]] *= 0.1
+        # 后部权重累加
+        sensor_rd_record[[17, 21]] *= 0.1
+        sensor_rd_record[[18, 20]] *= 0.15
+        sensor_rd_record[19] *= 0.2
+
+        sensor_rd_record[0:4] *= 0.05
+        sensor_rd_record[9:17] *= 0.05
+        sensor_rd_record[22:] *= 0.05
         reward_coll = sensor_rd_record.sum()
 
         # ship角速度reward计算
@@ -408,8 +430,8 @@ class RoutePlan(gym.Env, EzPickle):
 
         reward_unrotate = -abs(angle_unrotate / b2_pi)
 
-        reward = reward_coll + reward_dist + reward_unrotate + reward_ang_vel
-        # print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_vel:{reward_vel}')
+        reward = reward_coll + reward_dist + reward_ang_vel
+        print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_vel:{reward_vel}')
 
         # 定义成功终止状态
         if self.ship.contact:
@@ -433,8 +455,13 @@ class RoutePlan(gym.Env, EzPickle):
                 trans = f.body.transform
                 if type(f.shape) is b2CircleShape:
                     t = rendering.Transform(translation=trans * f.shape.pos)
-                    self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[2]).add_attr(t)
-                    self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[3], filled=False, linewidth=2).add_attr(t)
+                    # reach area区域渲染
+                    if hasattr(obj, 'color'):
+                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[4]).add_attr(t)
+                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[5], filled=False, linewidth=2).add_attr(t)
+                    else:
+                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[2]).add_attr(t)
+                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[3], filled=False, linewidth=2).add_attr(t)
                 else:
                     path = [trans * v for v in f.shape.vertices]
                     if hasattr(obj, 'color_bg'):

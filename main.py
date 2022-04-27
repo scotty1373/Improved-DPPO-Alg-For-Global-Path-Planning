@@ -23,13 +23,16 @@ def parse_args():
                         default=None)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=2000)
+                        default=500)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=None)
+                        default=23)
     parser.add_argument('--batch_size',
                         help='training batch size',
                         default=16)
+    parser.add_argument('--frame_skipping',
+                        help='random walk frame skipping',
+                        default=5)
     args = parser.parse_args()
     return args
 
@@ -47,7 +50,7 @@ def main(args):
     env.seed(13)
     env.unwrapped
     assert isinstance(args.batch_size, int)
-    agent = PPO(state_dim=6+11, action_dim=2, batch_size=args.batch_size)
+    agent = PPO(state_dim=3*(9+26), action_dim=2, batch_size=args.batch_size)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)
@@ -67,60 +70,72 @@ def main(args):
         reward_history = 0
         entropy_history = 0
         obs, _, done, _ = env.reset()
-        step = tqdm(range(args.max_timestep), leave=False, position=1, colour='red')
+        obs = np.stack((obs, obs, obs), axis=0).reshape(-1)
+        step = tqdm(range(args.max_timestep*args.frame_skipping), leave=False, position=1, colour='red')
         for t in step:
             # 是否进行可视化渲染
             env.render()
-            act, logprob, dist = agent.get_action(obs)
-            # 环境交互
-            obs_t1, reward, done, _ = env.step(act)
-            if not args.pre_train:
+            if agent.t % args.frame_skipping == 0:
+                act, logprob, dist = agent.get_action(obs)
+                # 环境交互
+                obs_t1, reward, done, _ = env.step(act)
+                obs_t1 = np.concatenate((obs_t1.reshape(1, -1), obs.reshape(3, -1)[:2, ...]), axis=0).reshape(-1)
+                # 达到maxstep次数之后给予惩罚
+                if (t + 1) % args.max_timestep == 0:
+                    done = True
+                    reward = -10
 
-                # 状态存储
-                agent.state_store_memory(obs, act, reward, logprob)
+                if not args.pre_train:
 
-                if (agent.t + 1) % agent.batch_size == 0 or (done and agent.t % agent.batch_size > 5):
-                    state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
-                    state = np.stack(state, axis=0)
-                    action = np.stack(action, axis=0)
-                    reward_nstep = np.stack(reward_nstep, axis=0)
-                    logprob_nstep = np.stack(logprob_nstep, axis=0)
-                    # 动作价值计算
-                    discount_reward = agent.decayed_reward(obs_t1, reward_nstep)
-                    # 策略网络价值网络更新
-                    agent.update(state, action, logprob_nstep, discount_reward)
-                    # 清空存储池
-                    agent.memory.clear()
-            entropy = dist.entropy().numpy().sum().item()
-            log_text = {'epochs': epoch,
-                        'time_step': agent.t,
-                        'reward': reward,
-                        'entropy': entropy,
-                        'acc': act[0].item(),
-                        'ori': act[1].item(),
-                        'actor_loss': agent.history_actor,
-                        'critic_loss': agent.history_critic}
-            step.set_description(f'epochs:{epoch}, '
-                                 f'time_step:{agent.t}, '
-                                 f'reward:{reward:.1f}, '
-                                 f'entropy: {log_text["entropy"]:.1f}, '
-                                 f'acc:{log_text["acc"]:.1f}, '
-                                 f'ori:{log_text["ori"]:.1f}, '
-                                 f'ang_vel:{env.ship.angularVelocity:.1f}, '
-                                 f'actor_loss:{agent.history_actor:.1f}, '
-                                 f'critic_loss:{agent.history_critic:.1f}')
-            # iter数据写入log文件
-            logger_iter.write2json(log_text)
-            if done:
-                break
+                    # 状态存储
+                    agent.state_store_memory(obs, act, reward, logprob)
 
-            # 记录timestep, reward＿sum
-            agent.t += 1
-            obs = obs_t1
-            reward_history += reward
-            entropy_history += entropy
+                    if (agent.t + 1) % agent.batch_size == 0 or (done and agent.t % agent.batch_size > 5):
+                        state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
+                        state = np.stack(state, axis=0)
+                        action = np.stack(action, axis=0)
+                        reward_nstep = np.stack(reward_nstep, axis=0)
+                        logprob_nstep = np.stack(logprob_nstep, axis=0)
+                        # 动作价值计算
+                        discount_reward = agent.decayed_reward(obs_t1, reward_nstep)
+                        # 策略网络价值网络更新
+                        agent.update(state, action, logprob_nstep, discount_reward)
+                        # 清空存储池
+                        agent.memory.clear()
+                entropy = dist.entropy().numpy().sum().item()
+                log_text = {'epochs': epoch,
+                            'time_step': agent.t,
+                            'reward': reward,
+                            'entropy': entropy,
+                            'acc': act[0].item(),
+                            'ori': act[1].item(),
+                            'actor_loss': agent.history_actor,
+                            'critic_loss': agent.history_critic}
+                step.set_description(f'epochs:{epoch}, '
+                                     f'time_step:{agent.t}, '
+                                     f'reward:{reward:.1f}, '
+                                     f'entropy: {log_text["entropy"]:.1f}, '
+                                     f'acc:{log_text["acc"]:.1f}, '
+                                     f'ori:{log_text["ori"]:.1f}, '
+                                     f'ang_vel:{env.ship.angularVelocity:.1f}, '
+                                     f'actor_loss:{agent.history_actor:.1f}, '
+                                     f'critic_loss:{agent.history_critic:.1f}')
+                # iter数据写入log文件
+                logger_iter.write2json(log_text)
 
-            if (t + 1) % args.max_timestep == 0:
+                # 记录timestep, reward＿sum
+                agent.t += 1
+                obs = obs_t1
+                reward_history += reward
+                entropy_history += entropy
+
+                if done:
+                    break
+
+            else:
+                env.step(np.zeros(2,))
+
+            if (t + 1) % (args.max_timestep * args.frame_skipping) == 0:
                 break
 
         ep_history.append(reward_history)

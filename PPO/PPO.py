@@ -11,7 +11,7 @@ import copy
 LEARNING_RATE_ACTOR = 1e-4
 LEARNING_RATE_CRITIC = 5e-4
 DECAY = 0.99
-EPILSON = 0.15
+EPILSON = 0.2
 # torch.autograd.set_detect_anomaly(True)
 
 
@@ -167,6 +167,13 @@ class PPO:
     def hard_update(model, target_model):
         weight_model = copy.deepcopy(model.state_dict())
         target_model.load_state_dict(weight_model)
+
+    @staticmethod
+    def resacle(pixel):
+        assert pixel.shape == (480, 480, 3)
+        pixel = rgb2gray(pixel)
+        pixel = Image.fromarray(pixel*255).resize((80, 80), resample=Image.BILINEAR)
+        return np.array(pixel) / 255
 
     @staticmethod
     def data_pcs(obs_: dict):

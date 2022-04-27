@@ -27,10 +27,10 @@ class ActorModel(nn.Module):
         nn.init.uniform_(self.mean_fc3.weight, 0, 3e-3)
         self.mean_fc3act = nn.Tanh()
 
-        # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
-        self.log_std = nn.Linear(self.state_dim, 64)
-        self.log_std1 = nn.Linear(64, self.action_dim)
-        nn.init.uniform_(self.log_std1.weight, 0, 1)
+        self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
+        # self.log_std = nn.Linear(self.state_dim, 64)
+        # self.log_std1 = nn.Linear(64, self.action_dim)
+        # nn.init.uniform_(self.log_std1.weight, 0, 1)
 
     def forward(self, state):
         mean = self.layer_mean(state)
@@ -41,13 +41,13 @@ class ActorModel(nn.Module):
         action_mean = self.mean_fc3(action_mean)
         action_mean = self.mean_fc3act(action_mean)
 
-        action_std = self.log_std(state)
-        action_std = nn.functional.relu(action_std, inplace=True)
-        action_std = self.log_std1(action_std)
-        action_std = nn.functional.softplus(action_std)
+        # action_std = self.log_std(state)
+        # action_std = nn.functional.relu(action_std, inplace=True)
+        # action_std = self.log_std1(action_std)
+        # action_std = nn.functional.softplus(action_std)
         # 广播机制匹配维度
         """由于是对log_std求exp，所以在计算Normal的时候不需要加1e-8"""
-        # action_std = torch.exp(self.log_std)
+        action_std = torch.exp(self.log_std)
         dist = Normal(action_mean, action_std)
         action_sample = dist.sample()
         action_sample = torch.clamp(action_sample, -1, 1)
