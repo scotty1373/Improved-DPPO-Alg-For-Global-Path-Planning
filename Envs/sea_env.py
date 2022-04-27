@@ -5,7 +5,7 @@
 # @Software : PyCharm
 import math
 import numpy as np
-# import keyboard
+import keyboard
 
 import Box2D
 from Box2D import (b2CircleShape, b2FixtureDef,
@@ -227,10 +227,10 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=0.7,
+            linearDamping=2,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=5.0,
+                density=10.0,
                 friction=12,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -339,11 +339,11 @@ class RoutePlan(gym.Env, EzPickle):
             if callback.hit:
                 sensor_raycast['points'][vect] = callback.point
                 sensor_raycast['normal'][vect] = callback.normal
-                sensor_raycast['distance'][vect] = Distance_Cacul(point1, callback.point)
+                sensor_raycast['distance'][vect] = Distance_Cacul(point1, callback.point) - self.ship_radius
                 if callback.fixture == self.reach_area.fixtures[0]:
-                    sensor_raycast['distance'][vect] = 25*self.ship_radius
+                    sensor_raycast['distance'][vect] = 25*self.ship_radius - self.ship_radius
             else:
-                sensor_raycast['distance'][vect] = 20*self.ship_radius
+                sensor_raycast['distance'][vect] = 20*self.ship_radius - self.ship_radius
         # print(sensor_raycast['distance'])
 
         pos = self.ship.position
@@ -438,7 +438,7 @@ class RoutePlan(gym.Env, EzPickle):
             if self.game_over:
                 reward = 100
             else:
-                reward = -10
+                reward = -20
             done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''

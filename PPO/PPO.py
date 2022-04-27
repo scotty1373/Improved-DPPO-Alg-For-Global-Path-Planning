@@ -1,6 +1,7 @@
 import numpy
 import torch
 from models.net_builder import ActorModel, CriticModel
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.distributions import Normal
 from collections import deque
 from skimage.color import rgb2gray
@@ -32,7 +33,9 @@ class PPO:
         self.c_loss = torch.nn.MSELoss()
         self.clip_ratio = 0.2
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
+        self.c_scheduler = CosineAnnealingLR(self.c_opt, T_max=100, eta_min=5e-5)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
+        self.a_scheduler = CosineAnnealingLR(self.a_opt, T_max=120, eta_min=1e-5)
 
         # training configuration
         self.update_actor_epoch = 3
@@ -140,15 +143,11 @@ class PPO:
 
         for i in range(self.update_actor_epoch):
             self.actor_update(state_, act, logprob, adv)
-            # print(f'epochs: {self.ep}, time_steps: {self.t}, actor_loss: {self.history_actor}')
+        self.a_scheduler.step()
 
         for i in range(self.update_critic_epoch):
             self.critic_update(state_, d_reward)
-            # print(f'epochs: {self.ep}, time_steps: {self.t}, critic_loss: {self.history_critic}')
-        # log_dict = {'epochs': self.ep,
-        #             'time_steps': {self.t},
-        #             'actor_loss': {self.history_actor},
-        #             'critic_loss': {self.history_critic}}
+        self.c_scheduler.step()
 
     def save_model(self, name):
         torch.save({'actor': self.pi.state_dict(),

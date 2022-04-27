@@ -24,7 +24,7 @@ class ActorModel(nn.Module):
         self.mean_fc2 = nn.Linear(128, 64)
         self.mean_fc2act = nn.ReLU(inplace=True)
         self.mean_fc3 = nn.Linear(64, self.action_dim)
-        nn.init.uniform_(self.mean_fc3.weight, 0, 3e-3)
+        nn.init.uniform_(self.mean_fc3.weight, 0, 2e-2)
         self.mean_fc3act = nn.Tanh()
 
         self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
