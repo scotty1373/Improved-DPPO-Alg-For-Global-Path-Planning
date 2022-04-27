@@ -32,7 +32,7 @@ def parse_args():
                         default=16)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=5)
+                        default=2)
     args = parser.parse_args()
     return args
 
@@ -75,7 +75,7 @@ def main(args):
         for t in step:
             # 是否进行可视化渲染
             env.render()
-            if agent.t % args.frame_skipping == 0:
+            if t % args.frame_skipping == 0:
                 act, logprob, dist = agent.get_action(obs)
                 # 环境交互
                 obs_t1, reward, done, _ = env.step(act)

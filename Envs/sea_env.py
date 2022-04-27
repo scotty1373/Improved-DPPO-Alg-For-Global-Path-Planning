@@ -5,7 +5,7 @@
 # @Software : PyCharm
 import math
 import numpy as np
-import keyboard
+# import keyboard
 
 import Box2D
 from Box2D import (b2CircleShape, b2FixtureDef,
@@ -227,7 +227,7 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=5,
+            linearDamping=0.7,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
                 density=5.0,
@@ -431,7 +431,7 @@ class RoutePlan(gym.Env, EzPickle):
         reward_unrotate = -abs(angle_unrotate / b2_pi)
 
         reward = reward_coll + reward_dist + reward_ang_vel
-        print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_vel:{reward_vel}')
+        # print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_vel:{reward_vel}')
 
         # 定义成功终止状态
         if self.ship.contact:
