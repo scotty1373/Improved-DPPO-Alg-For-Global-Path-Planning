@@ -45,12 +45,12 @@ def main(args):
             agent.load_model(checkpoint)
 
     ep_history = []
-    epochs = tqdm(range(args.epochs))
+    epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')
 
     for epoch in epochs:
         reward_history = 0
         obs = env.reset()
-        step = tqdm(range(args.max_timestep*5))
+        step = tqdm(range(args.max_timestep*5), leave=False, position=1, colour='red')
         for t in step:
             env.render()
             # if t%5==0:

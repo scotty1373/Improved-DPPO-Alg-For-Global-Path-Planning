@@ -15,13 +15,13 @@ class ActorModel(nn.Module):
         super(ActorModel, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
-        layer_mean = [nn.Linear(self.state_dim, 256),
+        layer_mean = [nn.Linear(self.state_dim, 64),
                       nn.ReLU(inplace=True)]
         self.layer_mean = nn.Sequential(*layer_mean)
 
-        self.mean_fc1 = nn.Linear(256, 128)
+        self.mean_fc1 = nn.Linear(64, 64)
         self.mean_fc1act = nn.ReLU(inplace=True)
-        self.mean_fc2 = nn.Linear(128, 64)
+        self.mean_fc2 = nn.Linear(64, 64)
         self.mean_fc2act = nn.ReLU(inplace=True)
         self.mean_fc3 = nn.Linear(64, self.action_dim)
         nn.init.uniform_(self.mean_fc3.weight, -3e-3, 0)
@@ -46,7 +46,7 @@ class ActorModel(nn.Module):
         action_std = nn.functional.softplus(action_std)
         # 广播机制匹配维度
         """由于是对log_std求exp，所以在计算Normal的时候不需要加1e-8"""
-        # action_std = torch.exp(self.log_std)
+        action_std = torch.exp(self.log_std)
         dist = Normal(action_mean, action_std)
         action_sample = dist.sample()
         action_sample = torch.clamp(action_sample, -1, 1)

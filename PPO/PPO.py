@@ -157,7 +157,7 @@ class PPO:
 
     def load_model(self, name):
         checkpoints = torch.load(name)
-        self.pi.load_state_dict(checkpoints['actor'])
+        self.pi.load_state_dict(checkpoints['actor'], strict=False)
         self.v.load_state_dict(checkpoints['critic'])
         self.a_opt.load_state_dict(checkpoints['opt_actor'])
         self.c_opt.load_state_dict(checkpoints['opt_critic'])
