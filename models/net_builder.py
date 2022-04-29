@@ -46,7 +46,7 @@ class ActorModel(nn.Module):
         action_std = nn.functional.softplus(action_std)
         # 广播机制匹配维度
         """由于是对log_std求exp，所以在计算Normal的时候不需要加1e-8"""
-        action_std = torch.exp(self.log_std)
+        # action_std = torch.exp(self.log_std)
         dist = Normal(action_mean, action_std)
         action_sample = dist.sample()
         action_sample = torch.clamp(action_sample, -1, 1)

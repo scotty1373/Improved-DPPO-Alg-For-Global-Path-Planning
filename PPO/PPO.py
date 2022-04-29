@@ -78,7 +78,11 @@ class PPO:
             state_t = torch.Tensor(state_t)
             critic_value_ = self.v(state_t)
             d_reward = torch.Tensor(decay_reward)
-            advantage = d_reward - critic_value_
+            adv_tmp = d_reward - critic_value_
+
+        advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+        if torch.isnan(advantage).any():
+            print("advantage is nan")
         return advantage
 
     # 计算critic更新用的 Q(s, a)和 V(s)
@@ -126,7 +130,7 @@ class PPO:
         actor_loss = -torch.mean(actor_loss)
 
         actor_loss.backward(retain_graph=True)
-        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
+        # torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
 
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
@@ -205,4 +209,4 @@ if __name__ == '__main__':
     agent = PPO(8, 2, 16)
     obs = torch.randn((16, 8))
     agent.get_action(obs)
-    agent.memory()
+    agent.memory

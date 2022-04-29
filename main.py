@@ -60,7 +60,7 @@ def main(args):
             if not args.pre_train:
                 agent.state_store_memory(obs, act, reward, logprob)
 
-                if (agent.t + 1) % agent.batch_size == 0 or (done and agent.t % agent.batch_size > 5):
+                if (t+1) % agent.batch_size == 0 or (done and (t+1) % agent.batch_size > 5):
                     state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
                     state = np.stack(state, axis=0)
                     action = np.stack(action, axis=0)
