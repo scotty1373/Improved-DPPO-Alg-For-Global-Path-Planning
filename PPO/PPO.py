@@ -32,6 +32,7 @@ class PPO:
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
         self.clip_ratio = 0.2
+        self.lamda = 0.9
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.c_scheduler = CosineAnnealingLR(self.c_opt, T_max=100, eta_min=5e-5)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
@@ -77,12 +78,19 @@ class PPO:
 
     # 计算actor更新用的advantage value
     def advantage_calcu(self, decay_reward, state_t):
-        with torch.no_grad():
-            state_t = torch.Tensor(state_t)
-            critic_value_ = self.v(state_t)
-            d_reward = torch.Tensor(decay_reward)
-            advantage = d_reward - critic_value_
-        return advantage
+        state_t = torch.Tensor(state_t)
+        critic_value_ = self.v(state_t).detach().numpy()
+        d_reward = decay_reward
+        gae_advantage = np.zeros_like(d_reward)
+        counter = 0
+        temp = 0
+        for value_est, unbiased_q in zip(critic_value_[::-1], d_reward[::-1]):
+            temp += (- value_est + unbiased_q) * (self.lamda**counter)
+            gae_advantage[counter, ...] = temp
+            counter += 1
+        gae_advantage = torch.Tensor(gae_advantage[::-1].copy())
+
+        return gae_advantage
 
     # 计算critic更新用的 Q(s, a)和 V(s)
     def critic_update(self, state_t1, d_reward_):

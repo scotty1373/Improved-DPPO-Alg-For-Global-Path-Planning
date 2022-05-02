@@ -23,7 +23,7 @@ def parse_args():
                         default=None)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=500)
+                        default=200)
     parser.add_argument('--seed',
                         help='environment initialization seed',
                         default=23)
@@ -32,7 +32,7 @@ def parse_args():
                         default=16)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=2)
+                        default=3)
     args = parser.parse_args()
     return args
 
@@ -46,7 +46,7 @@ def main(args):
         seed = None
 
     # 环境与agent初始化
-    env = RoutePlan(barrier_num=5, seed=seed)
+    env = RoutePlan(barrier_num=3, seed=seed)
     env.seed(13)
     env.unwrapped
     assert isinstance(args.batch_size, int)
@@ -71,7 +71,7 @@ def main(args):
         entropy_history = 0
         obs, _, done, _ = env.reset()
         obs = np.stack((obs, obs, obs), axis=0).reshape(-1)
-        step = tqdm(range(args.max_timestep*args.frame_skipping), leave=False, position=1, colour='red')
+        step = tqdm(range(1, args.max_timestep*args.frame_skipping), leave=False, position=1, colour='red')
         for t in step:
             # 是否进行可视化渲染
             env.render()
@@ -90,7 +90,7 @@ def main(args):
                     # 状态存储
                     agent.state_store_memory(obs, act, reward, logprob)
 
-                    if (agent.t + 1) % agent.batch_size == 0 or (done and agent.t % agent.batch_size > 5):
+                    if t % (args.frame_skipping*agent.batch_size) == 0 or (done and t % (agent.batch_size*args.frame_skipping) > 5):
                         state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
                         state = np.stack(state, axis=0)
                         action = np.stack(action, axis=0)
@@ -117,6 +117,7 @@ def main(args):
                                      f'entropy: {log_text["entropy"]:.1f}, '
                                      f'acc:{log_text["acc"]:.1f}, '
                                      f'ori:{log_text["ori"]:.1f}, '
+                                     f'lr:{agent.a_opt.state_dict()["param_groups"][0]["lr"]:.5f}'
                                      f'ang_vel:{env.ship.angularVelocity:.1f}, '
                                      f'actor_loss:{agent.history_actor:.1f}, '
                                      f'critic_loss:{agent.history_critic:.1f}')

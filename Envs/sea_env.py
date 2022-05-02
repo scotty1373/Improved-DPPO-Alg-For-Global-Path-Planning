@@ -31,7 +31,7 @@ VIEWPORT_H = 480
 
 INITIAL_RANDOM = 20
 MAIN_ENGINE_POWER = 50
-MAIN_ORIENT_POWER = 10
+MAIN_ORIENT_POWER = 5
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
@@ -366,14 +366,6 @@ class RoutePlan(gym.Env, EzPickle):
         vel_ang = self.ship.angularVelocity
 
         # 状态值归一化
-        # state = [
-        #     (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-        #     (pos.y - VIEWPORT_H/SCALE/2) / (VIEWPORT_H/SCALE/2),
-        #     vel_scalar/FPS,
-        #     angle_unrotate/b2_pi,
-        #     end_info.distance/self.dist_norm,
-        #     [sensor_info for sensor_info in sensor_raycast['distance']]
-        # ]
         state = [
             (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
             (pos.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
@@ -392,16 +384,16 @@ class RoutePlan(gym.Env, EzPickle):
         done = False
 
         # ship当前位置与reach area之间距离的reward计算
-        reward_dist = -end_info.distance / self.dist_norm * 5
+        reward_dist = -end_info.distance / self.dist_norm * 3
         # ship与障碍物reward计算
         sensor_rd_record = np.zeros(RAY_CAST_LASER_NUM)
         for idx, tp_dist in enumerate(sensor_raycast['distance']):
             if tp_dist - self.ship_radius <= 0:
-                sensor_rd_record[idx] = -5
-            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
                 sensor_rd_record[idx] = -3
-            if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*3:
-                sensor_rd_record[idx] = -1.5
+            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
+                sensor_rd_record[idx] = -2
+            if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*2:
+                sensor_rd_record[idx] = -1
             if self.ship_radius*5 < tp_dist - self.ship_radius:
                 sensor_rd_record[idx] = 0
         # 应用角度权重
