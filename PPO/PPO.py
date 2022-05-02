@@ -8,8 +8,8 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-4
-LEARNING_RATE_CRITIC = 5e-4
+LEARNING_RATE_ACTOR = 1e-5
+LEARNING_RATE_CRITIC = 5e-5
 DECAY = 0.99
 EPILSON = 0.2
 torch.autograd.set_detect_anomaly(True)
@@ -31,6 +31,7 @@ class PPO:
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
         self.clip_ratio = 0.2
+        self.lamda = 0.9
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
 
@@ -74,13 +75,25 @@ class PPO:
 
     # 计算actor更新用的advantage value
     def advantage_calcu(self, decay_reward, state_t):
+        # state_t = torch.Tensor(state_t)
+        # critic_value_ = self.v(state_t).detach().numpy()
+        # d_reward = decay_reward
+        # gae_advantage = np.zeros_like(d_reward)
+        # counter = 0
+        # temp = 0
+        # for value_est, unbiased_q in zip(critic_value_[::-1], d_reward[::-1]):
+        #     temp += (- value_est + unbiased_q) * (self.lamda**counter)
+        #     gae_advantage[counter, ...] = temp
+        #     counter += 1
+        # gae_advantage = torch.Tensor(gae_advantage[::-1].copy())
+        # # gae_advantage = (gae_advantage - gae_advantage.mean()) / gae_advantage.std()
+        # return gae_advantage
         with torch.no_grad():
             state_t = torch.Tensor(state_t)
             critic_value_ = self.v(state_t)
             d_reward = torch.Tensor(decay_reward)
-            adv_tmp = d_reward - critic_value_
-
-        advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+            advantage = d_reward - critic_value_
+        # advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
         if torch.isnan(advantage).any():
             print("advantage is nan")
         return advantage
@@ -105,18 +118,11 @@ class PPO:
 
         _, _, pi_dist = self.pi(state)
         logprob = pi_dist.log_prob(action)
-        # logprob_old = torch.FloatTensor(logprob_old).unsqueeze(-1)
-        #
-        # _, _, pi_dist = self.pi(state)
-        # logprob = pi_dist.log_prob(action).sum(-1).unsqueeze(-1)
 
         pi_entropy = pi_dist.entropy().mean(dim=1).detach()
 
         assert logprob.shape == logprob_old.shape
         ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
-
-        # 切换ratio中inf值为固定值，防止inf进入backward计算
-        # ratio_ori = torch.where(torch.isinf(ratio_ori), torch.full_like(ratio_ori, 3), ratio_ori)
 
         # 使shape匹配，防止元素相乘发生广播问题
         ratio = torch.unsqueeze(ratio, dim=1)
@@ -209,4 +215,3 @@ if __name__ == '__main__':
     agent = PPO(8, 2, 16)
     obs = torch.randn((16, 8))
     agent.get_action(obs)
-    agent.memory

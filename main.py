@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-from Envs.sea_env import RoutePlan
+# from Envs.sea_env import RoutePlan
 from PPO.PPO import PPO
 from utils_tools.common import log2json
 from tqdm import tqdm
@@ -56,7 +56,7 @@ def main(args):
         obs = env.reset()
         step = tqdm(range(args.max_timestep*5), leave=False, position=1, colour='red')
         for t in step:
-            env.render()
+            # env.render()
             # if t%5==0:
             act, logprob, dist = agent.get_action(obs)
 
