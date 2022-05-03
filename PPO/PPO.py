@@ -8,8 +8,8 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-5
-LEARNING_RATE_CRITIC = 5e-5
+LEARNING_RATE_ACTOR = 1e-4
+LEARNING_RATE_CRITIC = 1e-4
 DECAY = 0.99
 EPILSON = 0.2
 torch.autograd.set_detect_anomaly(True)
@@ -31,7 +31,7 @@ class PPO:
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
         self.clip_ratio = 0.2
-        self.lamda = 0.9
+        self.lamda = 0.97
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
 
@@ -45,9 +45,8 @@ class PPO:
 
     def _init(self, state_dim, action_dim, train_batch):
         self.pi = ActorModel(state_dim, action_dim)
-        # self.piold = ActorModel(state_dim, action_dim)
         self.v = CriticModel(state_dim, action_dim)
-        self.memory = deque(maxlen=train_batch)
+        self.memory = deque(maxlen=train_batch*2)
 
     def get_action(self, obs_):
         obs_ = torch.Tensor(copy.deepcopy(obs_))
@@ -75,19 +74,6 @@ class PPO:
 
     # 计算actor更新用的advantage value
     def advantage_calcu(self, decay_reward, state_t):
-        # state_t = torch.Tensor(state_t)
-        # critic_value_ = self.v(state_t).detach().numpy()
-        # d_reward = decay_reward
-        # gae_advantage = np.zeros_like(d_reward)
-        # counter = 0
-        # temp = 0
-        # for value_est, unbiased_q in zip(critic_value_[::-1], d_reward[::-1]):
-        #     temp += (- value_est + unbiased_q) * (self.lamda**counter)
-        #     gae_advantage[counter, ...] = temp
-        #     counter += 1
-        # gae_advantage = torch.Tensor(gae_advantage[::-1].copy())
-        # # gae_advantage = (gae_advantage - gae_advantage.mean()) / gae_advantage.std()
-        # return gae_advantage
         with torch.no_grad():
             state_t = torch.Tensor(state_t)
             critic_value_ = self.v(state_t)
@@ -97,6 +83,28 @@ class PPO:
         if torch.isnan(advantage).any():
             print("advantage is nan")
         return advantage
+
+    def gae_adv(self, state_t, reward_step, last_val):
+        with torch.no_grad():
+            state_t = torch.Tensor(state_t)
+            critic_value_ = self.v(state_t).detach()
+            batch_size = critic_value_.shape[0]
+            critic_value_ = torch.cat([critic_value_, last_val.reshape(-1, 1)], dim=0)
+
+            assert reward_step.shape == critic_value_.shape
+            td_error = reward_step[:-1] + self.epilson * critic_value_[1:] - critic_value_[:-1]
+
+            gae_advantage = np.zeros((batch_size, 1))
+
+            for idx, td in enumerate(td_error.numpy()[::-1]):
+                temp = 0
+                for adv_idx, weight in enumerate(range(idx, -1, -1)):
+                    temp += gae_advantage[adv_idx, 0] * ((self.lamda*self.epilson)**weight)
+                gae_advantage[idx, ...] = td + temp
+            """！！！以下代码结构需做优化！！！"""
+            gae_advantage = torch.Tensor(gae_advantage[::-1].copy())
+        # gae_advantage = (gae_advantage - gae_advantage.mean()) / (gae_advantage.std() + 1e-8)
+        return gae_advantage
 
     # 计算critic更新用的 Q(s, a)和 V(s)
     def critic_update(self, state_t1, d_reward_):
@@ -109,7 +117,7 @@ class PPO:
         self.history_critic = critic_loss.detach().item()
         self.c_opt.zero_grad()
         critic_loss.backward(retain_graph=True)
-        torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=0.5, norm_type=2)
+        # torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=0.5, norm_type=2)
         self.c_opt.step()
 
     def actor_update(self, state, action, logprob_old, advantage):
@@ -133,19 +141,31 @@ class PPO:
         actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
 
         self.a_opt.zero_grad()
-        actor_loss = -torch.mean(actor_loss)
+        actor_loss = -torch.mean(actor_loss + pi_entropy)
 
         actor_loss.backward(retain_graph=True)
-        # torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
+        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
 
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
 
-    def update(self, state, action, logprob, discount_reward_):
+    def update(self, state, action, logprob, discount_reward_, reward_nstep, last_val, done):
         state_ = torch.Tensor(state)
         act = action
+        if done:
+            last_val =torch.zeros(1,)
+        try:
+            reward = torch.FloatTensor(reward_nstep)
+            reward = torch.cat((reward, last_val), dim=0).reshape(-1, 1)
+        except TypeError as e:
+            print('reward error')
+
+
+        # 用于计算critic损失/原始advantage
         d_reward = np.concatenate(discount_reward_).reshape(-1, 1)
-        adv = self.advantage_calcu(d_reward, state_)
+
+        # adv = self.advantage_calcu(d_reward, state_)
+        adv = self.gae_adv(state_, reward, last_val)
 
         for i in range(self.update_actor_epoch):
             self.actor_update(state_, act, logprob, adv)

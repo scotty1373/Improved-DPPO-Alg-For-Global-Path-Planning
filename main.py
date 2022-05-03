@@ -2,6 +2,8 @@
 import numpy as np
 
 # from Envs.sea_env import RoutePlan
+import torch
+
 from PPO.PPO import PPO
 from utils_tools.common import log2json
 from tqdm import tqdm
@@ -54,24 +56,27 @@ def main(args):
         reward_history = 0
         entropy_history = 0
         obs = env.reset()
-        step = tqdm(range(args.max_timestep*5), leave=False, position=1, colour='red')
+        step = tqdm(range(1, args.max_timestep*5), leave=False, position=1, colour='green')
         for t in step:
-            # env.render()
-            # if t%5==0:
+            env.render()
             act, logprob, dist = agent.get_action(obs)
 
             obs_t1, reward, done, _ = env.step(act)
             if not args.pre_train:
                 agent.state_store_memory(obs, act, reward, logprob)
 
-                if (t+1) % agent.batch_size == 0 or (done and (t+1) % agent.batch_size > 5):
+                if t % agent.batch_size == 0 or (done and (t % agent.batch_size > 5)):
                     state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
                     state = np.stack(state, axis=0)
                     action = np.stack(action, axis=0)
                     logprob_nstep = np.stack(logprob_nstep, axis=0)
                     reward_nstep = np.stack(reward_nstep, axis=0)
+                    # 计算标准advantage时需要discount_reward
                     discount_reward = agent.decayed_reward(obs_t1, reward_nstep)
-                    agent.update(state, action, logprob_nstep, discount_reward)
+                    with torch.no_grad():
+                        last_frame = torch.Tensor(obs_t1)
+                        last_val = agent.v(last_frame)
+                    agent.update(state, action, logprob_nstep, discount_reward, reward_nstep, last_val, done)
                     agent.memory.clear()
             entropy = dist.entropy().numpy().sum().item()
             log_text = {'epochs': epoch,
@@ -102,7 +107,7 @@ def main(args):
             if done:
                 break
 
-            if t + 1 % (args.max_timestep*5) == 0:
+            if t % args.max_timestep == 0:
                 break
 
         ep_history.append(reward_history)
@@ -116,6 +121,7 @@ def main(args):
                                f'entropy:{log_ep_text["entropy_mean"]:.1f}')
         # epoch数据写入log文件
         logger_ep.write2json(log_ep_text)
+
     env.close()
 
 
