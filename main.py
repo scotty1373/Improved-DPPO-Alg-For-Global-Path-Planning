@@ -35,7 +35,7 @@ def main(args):
     args = args
     env = gym.make('LunarLanderContinuous-v2')
     env.unwrapped
-    agent = PPO(state_dim=8, action_dim=2, batch_size=16)
+    agent = PPO(state_dim=8, action_dim=2, batch_size=32)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)

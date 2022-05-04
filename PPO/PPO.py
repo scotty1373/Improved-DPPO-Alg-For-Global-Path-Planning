@@ -4,12 +4,13 @@ from models.net_builder import ActorModel, CriticModel
 from torch.distributions import Normal
 from collections import deque
 from skimage.color import rgb2gray
+from scipy import signal
 from PIL import Image
 import numpy as np
 import copy
 
 LEARNING_RATE_ACTOR = 1e-4
-LEARNING_RATE_CRITIC = 1e-4
+LEARNING_RATE_CRITIC = 5e-4
 DECAY = 0.99
 EPILSON = 0.2
 torch.autograd.set_detect_anomaly(True)
@@ -92,17 +93,17 @@ class PPO:
             critic_value_ = torch.cat([critic_value_, last_val.reshape(-1, 1)], dim=0)
 
             assert reward_step.shape == critic_value_.shape
-            td_error = reward_step[:-1] + self.epilson * critic_value_[1:] - critic_value_[:-1]
+            td_error = reward_step[:-1] + self.decay_index * critic_value_[1:] - critic_value_[:-1]
 
-            gae_advantage = np.zeros((batch_size, 1))
+            gae_advantage = signal.lfilter([1], [1, -self.decay_index*self.lamda], td_error.numpy()[::-1], axis=0)[::-1]
 
-            for idx, td in enumerate(td_error.numpy()[::-1]):
-                temp = 0
-                for adv_idx, weight in enumerate(range(idx, -1, -1)):
-                    temp += gae_advantage[adv_idx, 0] * ((self.lamda*self.epilson)**weight)
-                gae_advantage[idx, ...] = td + temp
+            # for idx, td in enumerate(td_error.numpy()[::-1]):
+            #     temp = 0
+            #     for adv_idx, weight in enumerate(range(idx, -1, -1)):
+            #         temp += gae_advantage[adv_idx, 0] * ((self.lamda*self.epilson)**weight)
+            #     gae_advantage[idx, ...] = td + temp
             """！！！以下代码结构需做优化！！！"""
-            gae_advantage = torch.Tensor(gae_advantage[::-1].copy())
+            gae_advantage = torch.Tensor(gae_advantage.copy())
         # gae_advantage = (gae_advantage - gae_advantage.mean()) / (gae_advantage.std() + 1e-8)
         return gae_advantage
 
