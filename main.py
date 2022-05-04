@@ -26,7 +26,7 @@ def parse_args():
                         default=None)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=500)
+                        default=256)
     args = parser.parse_args()
     return args
 
@@ -56,7 +56,7 @@ def main(args):
         reward_history = 0
         entropy_history = 0
         obs = env.reset()
-        step = tqdm(range(1, args.max_timestep*5), leave=False, position=1, colour='green')
+        step = tqdm(range(1, args.max_timestep), leave=False, position=1, colour='green')
         for t in step:
             env.render()
             act, logprob, dist = agent.get_action(obs)
