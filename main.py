@@ -5,6 +5,7 @@ from Envs.sea_env import RoutePlan
 from PPO.PPO import PPO
 from utils_tools.common import log2json, dirs_creat
 from tqdm import tqdm
+import torch
 import argparse
 
 TIME_BOUNDARY = 500
@@ -26,13 +27,13 @@ def parse_args():
                         default=200)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=23)
+                        default=None)
     parser.add_argument('--batch_size',
                         help='training batch size',
                         default=16)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=3)
+                        default=2)
     args = parser.parse_args()
     return args
 
@@ -50,7 +51,7 @@ def main(args):
     env.seed(13)
     env.unwrapped
     assert isinstance(args.batch_size, int)
-    agent = PPO(state_dim=3*(9+26), action_dim=2, batch_size=args.batch_size)
+    agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)
@@ -98,8 +99,13 @@ def main(args):
                         logprob_nstep = np.stack(logprob_nstep, axis=0)
                         # 动作价值计算
                         discount_reward = agent.decayed_reward(obs_t1, reward_nstep)
+
+                        # 计算gae advantage
+                        with torch.no_grad():
+                            last_frame = torch.Tensor(obs_t1)
+                            last_val = agent.v(last_frame)
                         # 策略网络价值网络更新
-                        agent.update(state, action, logprob_nstep, discount_reward)
+                        agent.update(state, action, logprob_nstep, discount_reward, reward_nstep, last_val, done)
                         # 清空存储池
                         agent.memory.clear()
                 entropy = dist.entropy().numpy().sum().item()
@@ -117,7 +123,7 @@ def main(args):
                                      f'entropy: {log_text["entropy"]:.1f}, '
                                      f'acc:{log_text["acc"]:.1f}, '
                                      f'ori:{log_text["ori"]:.1f}, '
-                                     f'lr:{agent.a_opt.state_dict()["param_groups"][0]["lr"]:.5f}'
+                                     f'lr:{agent.a_opt.state_dict()["param_groups"][0]["lr"]:.5f}, '
                                      f'ang_vel:{env.ship.angularVelocity:.1f}, '
                                      f'actor_loss:{agent.history_actor:.1f}, '
                                      f'critic_loss:{agent.history_critic:.1f}')

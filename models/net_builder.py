@@ -24,7 +24,7 @@ class ActorModel(nn.Module):
         self.mean_fc2 = nn.Linear(64, 64)
         self.mean_fc2act = nn.ReLU(inplace=True)
         self.mean_fc3 = nn.Linear(64, self.action_dim)
-        nn.init.uniform_(self.mean_fc3.weight, 0, 2e-2)
+        nn.init.uniform_(self.mean_fc3.weight, 0, 3e-3)
         self.mean_fc3act = nn.Tanh()
 
         # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
@@ -48,7 +48,7 @@ class ActorModel(nn.Module):
         # 广播机制匹配维度
         """由于是对log_std求exp，所以在计算Normal的时候不需要加1e-8"""
         # action_std = torch.exp(self.log_std)
-        dist = Normal(action_mean, action_std)
+        dist = Normal(action_mean, action_std + 1e-8)
         action_sample = dist.sample()
         action_sample = torch.clamp(action_sample, -1, 1)
         # try:

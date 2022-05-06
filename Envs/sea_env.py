@@ -30,8 +30,8 @@ VIEWPORT_W = 480
 VIEWPORT_H = 480
 
 INITIAL_RANDOM = 20
-MAIN_ENGINE_POWER = 50
-MAIN_ORIENT_POWER = 5
+MAIN_ENGINE_POWER = 70
+MAIN_ORIENT_POWER = 30
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
@@ -40,7 +40,7 @@ PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # shipddddd
          (0.87, 0.4, 0.23), (0.58, 0.35, 0.28),  # reach area
          (0.25, 0.41, 0.88)]
 
-RAY_CAST_LASER_NUM = 26
+RAY_CAST_LASER_NUM = 24
 
 SHIP_POLY = [
     (-5, +8), (-5, -8), (0, -8),
@@ -372,65 +372,68 @@ class RoutePlan(gym.Env, EzPickle):
             vel.x/FPS,
             vel.y/FPS,
             angle_unrotate/b2_pi,
-            end_ori,
-            (self.reach_area.position.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-            (self.reach_area.position.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
+            end_ori/b2_pi,
+            # (self.reach_area.position.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
+            # (self.reach_area.position.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
             end_info.distance/self.dist_norm,
-            [sensor_info for sensor_info in sensor_raycast['distance']]
+            [sensor_info for sensor_info in sensor_raycast['distance']/(self.ship_radius * 20)]
         ]
-        assert len(state) == 10
+        assert len(state) == 8
 
         """Reward 计算"""
         done = False
 
         # ship当前位置与reach area之间距离的reward计算
-        reward_dist = -end_info.distance / self.dist_norm * 3
+        reward_dist = -end_info.distance / self.dist_norm
         # ship与障碍物reward计算
         sensor_rd_record = np.zeros(RAY_CAST_LASER_NUM)
         for idx, tp_dist in enumerate(sensor_raycast['distance']):
             if tp_dist - self.ship_radius <= 0:
-                sensor_rd_record[idx] = -3
-            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
-                sensor_rd_record[idx] = -2
-            if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*2:
                 sensor_rd_record[idx] = -1
+            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
+                sensor_rd_record[idx] = -0.5
+            if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*2:
+                sensor_rd_record[idx] = -0.25
             if self.ship_radius*5 < tp_dist - self.ship_radius:
                 sensor_rd_record[idx] = 0
         # 应用角度权重
         # 前部权重累加
-        sensor_rd_record[6] *= 0.2
-        sensor_rd_record[[5, 7]] *= 0.15
-        sensor_rd_record[[4, 8]] *= 0.1
-        # 后部权重累加
-        sensor_rd_record[[17, 21]] *= 0.1
-        sensor_rd_record[[18, 20]] *= 0.15
-        sensor_rd_record[19] *= 0.2
-
-        sensor_rd_record[0:4] *= 0.05
-        sensor_rd_record[9:17] *= 0.05
-        sensor_rd_record[22:] *= 0.05
+        # sensor_rd_record[6] *= 0.2
+        # sensor_rd_record[[4, 5, 7, 8]] *= 0.15
+        # sensor_rd_record[[2, 3, 9, 10]] *= 0.1
+        # # 后部权重累加
+        # sensor_rd_record[[14, 15, 21, 22]] *= 0.1
+        # sensor_rd_record[[16, 17, 19, 20]] *= 0.15
+        # sensor_rd_record[18] *= 0.2
+        #
+        # sensor_rd_record[0:4] *= 0.05
+        # sensor_rd_record[11:14] *= 0.05
+        # sensor_rd_record[22:] *= 0.05
+        sensor_rd_record *= 0.1
         reward_coll = sensor_rd_record.sum()
 
         # ship角速度reward计算
-        reward_ang_vel = -abs(vel_ang)
+        reward_ang_vel = -abs(vel_ang / b2_pi)
 
-        # ship速度reward计算
-        if vel_scalar > 3:
+        # ship投影方向速度reward计算
+        if vel_scalar > 5
             reward_vel = -3
+        elif vel2ship_proj < 2:
+            reward_vel = -5
         else:
             reward_vel = 0
 
-        reward_unrotate = -abs(angle_unrotate / b2_pi)
+        reward_unrotate = 3 - abs(end_ori - angle_unrotate)
 
-        reward = reward_coll + reward_dist + reward_ang_vel
-        # print(f'reward_coll:{reward_coll}, reward_dist:{reward_dist}, reward_vel:{reward_vel}')
+        reward = reward_coll + reward_dist + reward_vel + reward_ang_vel + reward_unrotate
+        print(f'reward_coll:{reward_coll:.1f}, reward_dist:{reward_dist:.1f}, reward_vel:{reward_unrotate:.1f}, reward_ang_vel:{reward_ang_vel:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
                 reward = 100
             else:
-                reward = -20
+                reward = -200
             done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
