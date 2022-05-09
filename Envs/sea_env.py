@@ -398,18 +398,17 @@ class RoutePlan(gym.Env, EzPickle):
                 sensor_rd_record[idx] = 0
         # 应用角度权重
         # 前部权重累加
-        # sensor_rd_record[6] *= 0.2
-        # sensor_rd_record[[4, 5, 7, 8]] *= 0.15
-        # sensor_rd_record[[2, 3, 9, 10]] *= 0.1
-        # # 后部权重累加
-        # sensor_rd_record[[14, 15, 21, 22]] *= 0.1
-        # sensor_rd_record[[16, 17, 19, 20]] *= 0.15
-        # sensor_rd_record[18] *= 0.2
-        #
-        # sensor_rd_record[0:4] *= 0.05
-        # sensor_rd_record[11:14] *= 0.05
-        # sensor_rd_record[22:] *= 0.05
-        sensor_rd_record *= 0.1
+        sensor_rd_record[6] *= 0.2
+        sensor_rd_record[[4, 5, 7, 8]] *= 0.15
+        sensor_rd_record[[2, 3, 9, 10]] *= 0.1
+        # 后部权重累加
+        sensor_rd_record[[14, 15, 21, 22]] *= 0.1
+        sensor_rd_record[[16, 17, 19, 20]] *= 0.15
+        sensor_rd_record[18] *= 0.2
+
+        sensor_rd_record[0:4] *= 0.05
+        sensor_rd_record[11:14] *= 0.05
+        sensor_rd_record[22:] *= 0.05
         reward_coll = sensor_rd_record.sum()
 
         # ship角速度reward计算
