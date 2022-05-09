@@ -22,6 +22,7 @@ b2ContactListener：碰撞检测监听器
 import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
+from .heat_map import HeatMap, heat_map_trans
 
 SCALE = 30
 FPS = 60
@@ -125,6 +126,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.game_over = None
         self.prev_reward = None
         self.draw_list = None
+        self.heat_map = None
         self.dist_norm = 14.38
 
         # useful range is -1 .. +1, but spikes can be higher
@@ -267,6 +269,18 @@ class RoutePlan(gym.Env, EzPickle):
         self.reach_area.color = PANEL[4]
         self.draw_list = [self.ship] + self.barrier + [self.reach_area] + [self.ground]
 
+        # reward Heatmap构建
+        bound_list = self.barrier + [self.reach_area] + [self.ground]
+        heat_map_init = HeatMap(bound_list)
+        self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
+        self.heat_map += heat_map_init.ground_rewardCal
+        self.heat_map += heat_map_init.reach_rewardCal(heat_map_init.ra)
+        self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
+        # import matplotlib.pyplot as plt
+        # import seaborn as sns
+        # fig, axes = plt.subplots(1, 1)
+        # sns.heatmap(self.heat_map, annot=False, ax=axes)
+        # plt.show()
         return self.step(np.array([0, 0]))
 
     def step(self, action: np.array):
@@ -347,6 +361,7 @@ class RoutePlan(gym.Env, EzPickle):
         # print(sensor_raycast['distance'])
 
         pos = self.ship.position
+        pos_mapping = heat_map_trans(pos)
         vel = self.ship.linearVelocity
 
         # 基于polyshape的最近距离测算
@@ -373,8 +388,6 @@ class RoutePlan(gym.Env, EzPickle):
             vel.y/FPS,
             angle_unrotate/b2_pi,
             end_ori/b2_pi,
-            # (self.reach_area.position.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-            # (self.reach_area.position.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
             end_info.distance/self.dist_norm,
             [sensor_info for sensor_info in sensor_raycast['distance']/(self.ship_radius * 20)]
         ]
@@ -383,6 +396,7 @@ class RoutePlan(gym.Env, EzPickle):
         """Reward 计算"""
         done = False
 
+        """        
         # ship当前位置与reach area之间距离的reward计算
         reward_dist = -end_info.distance / self.dist_norm
         # ship与障碍物reward计算
@@ -410,12 +424,13 @@ class RoutePlan(gym.Env, EzPickle):
         sensor_rd_record[11:14] *= 0.05
         sensor_rd_record[22:] *= 0.05
         reward_coll = sensor_rd_record.sum()
+        """
 
         # ship角速度reward计算
         reward_ang_vel = -abs(vel_ang / b2_pi)
 
         # ship投影方向速度reward计算
-        if vel_scalar > 5
+        if vel_scalar > 5:
             reward_vel = -3
         elif vel2ship_proj < 2:
             reward_vel = -5
@@ -424,8 +439,11 @@ class RoutePlan(gym.Env, EzPickle):
 
         reward_unrotate = 3 - abs(end_ori - angle_unrotate)
 
-        reward = reward_coll + reward_dist + reward_vel + reward_ang_vel + reward_unrotate
-        print(f'reward_coll:{reward_coll:.1f}, reward_dist:{reward_dist:.1f}, reward_vel:{reward_unrotate:.1f}, reward_ang_vel:{reward_ang_vel:.1f}, reward_vel:{reward_vel:.1f}')
+        reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
+
+        # reward = reward_coll + reward_dist + reward_vel + reward_ang_vel + reward_unrotate
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel + reward_ang_vel + reward_unrotate
+        print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_ang_vel:{reward_ang_vel:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:
@@ -532,4 +550,4 @@ def demo_route_plan(env, seed=None, render=False):
 
 
 if __name__ == '__main__':
-    demo_route_plan(RoutePlan(), render=True)
+    demo_route_plan(RoutePlan(seed=42), render=True)
