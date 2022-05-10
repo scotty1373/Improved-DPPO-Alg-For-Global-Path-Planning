@@ -27,7 +27,7 @@ def parse_args():
                         default=400)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=None)
+                        default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
                         default=16)
@@ -51,7 +51,8 @@ def main(args):
     env.seed(13)
     env.unwrapped
     assert isinstance(args.batch_size, int)
-    agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
+    # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
+    agent = PPO(state_dim=4 * 7, action_dim=2, batch_size=args.batch_size)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)

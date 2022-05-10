@@ -32,7 +32,7 @@ VIEWPORT_H = 480
 
 INITIAL_RANDOM = 20
 MAIN_ENGINE_POWER = 70
-MAIN_ORIENT_POWER = 30
+MAIN_ORIENT_POWER = 10
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
@@ -260,7 +260,7 @@ class RoutePlan(gym.Env, EzPickle):
         """
 
         reach_center_x = W/2
-        reach_center_y = H*0.5
+        reach_center_y = H*0.8
         circle_shape = b2CircleShape(radius=1.2)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
@@ -275,7 +275,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
         self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += heat_map_init.reach_rewardCal(heat_map_init.ra)
-        self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
+        # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
         # import matplotlib.pyplot as plt
         # import seaborn as sns
         # fig, axes = plt.subplots(1, 1)
@@ -381,17 +381,26 @@ class RoutePlan(gym.Env, EzPickle):
         vel_ang = self.ship.angularVelocity
 
         # 状态值归一化
+        # state = [
+        #     (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
+        #     (pos.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
+        #     vel.x/FPS,
+        #     vel.y/FPS,
+        #     angle_unrotate/b2_pi,
+        #     end_ori/b2_pi,
+        #     end_info.distance/self.dist_norm,
+        #     [sensor_info for sensor_info in sensor_raycast['distance']/(self.ship_radius * 20)]
+        # ]
+        # assert len(state) == 8
         state = [
             (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
             (pos.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
-            vel.x/FPS,
-            vel.y/FPS,
+            vel_scalar,
             angle_unrotate/b2_pi,
             end_ori/b2_pi,
-            end_info.distance/self.dist_norm,
-            [sensor_info for sensor_info in sensor_raycast['distance']/(self.ship_radius * 20)]
+            end_info.distance/self.dist_norm
         ]
-        assert len(state) == 8
+        assert len(state) == 7
 
         """Reward 计算"""
         done = False
@@ -431,9 +440,9 @@ class RoutePlan(gym.Env, EzPickle):
 
         # ship投影方向速度reward计算
         if vel_scalar > 5:
-            reward_vel = -3
-        elif vel2ship_proj < 2:
-            reward_vel = -5
+            reward_vel = -1
+        elif vel2ship_proj < 0:
+            reward_vel = -20
         else:
             reward_vel = 0
 
@@ -441,9 +450,8 @@ class RoutePlan(gym.Env, EzPickle):
 
         reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        # reward = reward_coll + reward_dist + reward_vel + reward_ang_vel + reward_unrotate
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel + reward_ang_vel + reward_unrotate
-        print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_ang_vel:{reward_ang_vel:.1f}, reward_vel:{reward_vel:.1f}')
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel
+        # print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:

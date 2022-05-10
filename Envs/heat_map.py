@@ -9,7 +9,7 @@ import Box2D
 from Box2D import (b2CircleShape, b2EdgeShape)
 
 ORG_SCALE = 16
-REMAP_SACLE = 80
+REMAP_SACLE = 30
 RATIO = REMAP_SACLE/ORG_SCALE
 
 
@@ -20,12 +20,16 @@ def heat_map_trans(vect, *, ratio=REMAP_SACLE/ORG_SCALE):
 def get_dist(pointa, pointb):
     return np.sqrt(np.square(pointa[0] - pointb[0]) + np.square(pointa[1] - pointb[1]))
 
+def normalize(array):
+    assert isinstance(array, np.ndarray)
+    return (array - array.min()) / (array.max() - array.min())
+
 class HeatMap:
     def __init__(self, bound_list):
         self.size = (REMAP_SACLE, REMAP_SACLE)
         self._init(bound_list)
         self.barr_reward = -20
-        self.ground_pean = -10
+        self.ground_pean = -20
         self.reach_reward = 50
 
     def _init(self, bound_list):
@@ -70,7 +74,7 @@ class HeatMap:
                 if type(f.shape) == b2CircleShape:
                     # 障碍物参数
                     if hasattr(obj, 'color'):
-                        reach_area['position'] = heat_map_trans(f.shape.pos)
+                        reach_area['position'] = heat_map_trans(obj.position)[[1, 0]]
                         reach_area['radius'] = f.shape.radius * RATIO
                     # 抵达点参数
                     else:
@@ -111,12 +115,12 @@ class HeatMap:
                     # 跳过自身位置，防止divide by zero
                     dist = get_dist(barr_list['position'][idx_barr], (row_offset, col_offset))
                     if dist <= barr_list['radius'][idx_barr]:
-                        heat_mat[row_offset, col_offset] = self.barr_reward
+                        heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(barr_list['radius'][idx_barr]*0.05))
                         continue
                     else:
-                        heat_mat[row_offset, col_offset] = self.barr_reward * (3 - math.log(dist - barr_list['radius'][idx_barr]*0.8))
-            heat_mat_collect += heat_mat
-        return heat_mat_collect
+                        heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(dist - barr_list['radius'][idx_barr]*0.95))
+            heat_mat_collect += 1 - normalize(heat_mat)
+        return -heat_mat_collect
 
     @property
     def ground_rewardCal(self):
@@ -129,9 +133,15 @@ class HeatMap:
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(center, (row_offset, col_offset))
-                if dist > self.size[0]//2 * 0.95:
-                    _mat[row_offset, col_offset] = self.ground_pean * (3 - math.log(dist - self.size[0]//2*0.95))
-        return _mat
+                if dist <= self.size[0]//2 * 0.8:
+                    """测试修改"""
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * 0.8) + 4.0))
+                # else:
+                # if col_offset == center[1] and row_offset == center[0]:
+                #     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist + 1) + 4.0))
+                else:
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8))
+        return - 1 + normalize(_mat)
 
     def reach_rewardCal(self, reachinfo):
         """
@@ -143,11 +153,11 @@ class HeatMap:
             for col_offset in range(self.size[1]):
                 dist = get_dist(reachinfo['position'], (row_offset, col_offset))
                 if dist <= reachinfo['radius']:
-                    _mat[row_offset, col_offset] = self.reach_reward
+                    _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(reachinfo['radius']*0.2))
                     continue
                 else:
-                    _mat[row_offset, col_offset] = self.reach_reward * (7 - math.log(dist - reachinfo['radius']*0.8))
-        return _mat
+                    _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(dist - reachinfo['radius']*0.8))
+        return normalize(_mat) * 2
 
 
 if __name__ == '__main__':
