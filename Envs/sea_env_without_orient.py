@@ -22,7 +22,7 @@ b2ContactListener：碰撞检测监听器
 import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
-from .heat_map import HeatMap, heat_map_trans
+from heat_map import HeatMap, heat_map_trans, normalize
 
 SCALE = 30
 FPS = 60
@@ -246,19 +246,6 @@ class RoutePlan(gym.Env, EzPickle):
 
         """抵达点生成"""
         # 设置抵达点位置
-        """        
-        reach_center_x = W/2 - W*0.05
-        reach_center_y = H*0.5
-        # 设置抵达点长宽，建立形状
-        rect = b2PolygonShape()
-        rect.SetAsBox(W*0.05, H*0.4)
-        # 生成reach_area位置
-        self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
-                                                      fixtures=b2FixtureDef(
-                                                          shape=rect))
-        self.reach_area.color = PANEL[4]
-        """
-
         reach_center_x = W/2
         reach_center_y = H*0.8
         circle_shape = b2CircleShape(radius=1.2)
@@ -272,15 +259,19 @@ class RoutePlan(gym.Env, EzPickle):
         # reward Heatmap构建
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list)
-        self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map += heat_map_init.ground_rewardCal
-        self.heat_map += heat_map_init.reach_rewardCal(heat_map_init.ra)
+        # self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
+        self.heat_map = heat_map_init.ground_rewardCal
+        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra) / 2 - 1)*2
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
         # import matplotlib.pyplot as plt
         # import seaborn as sns
         # fig, axes = plt.subplots(1, 1)
         # sns.heatmap(self.heat_map, annot=False, ax=axes)
         # plt.show()
+        if self.barrier:
+            for idx, barr in enumerate(self.barrier):
+                self.world.DestroyBody(barr)
+        self.barrier.clear()
         return self.step(np.array([0, 0]))
 
     def step(self, action: np.array):
@@ -291,8 +282,11 @@ class RoutePlan(gym.Env, EzPickle):
 
         """船体推进位置及动力大小计算"""
         force2ship = self.remap(action[0], MAIN_ENGINE_POWER)
+        orient2ship = self.remap(action[1], MAIN_ORIENT_POWER)
+        orient_position = (math.cos(orient2ship)*force2ship, math.sin(orient2ship)*force2ship)
         # 计算船体local vector相对于世界vector方向
-        force2ship = self.ship.GetWorldVector(localVector=(force2ship, 0.0))
+        force2ship = self.ship.GetWorldVector(localVector=(orient_position[0], orient_position[1]))
+
         # 获取力量点位置
         force2position = self.ship.GetWorldPoint(localPoint=(0, 0))
 
@@ -313,14 +307,7 @@ class RoutePlan(gym.Env, EzPickle):
         ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
         # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
         vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
-
-        '''***** 当船体速度减至0时，不进行后退操作 *****'''
-        # if vel2ship_proj < 0:
-        #     if action[0] > 0:
-        #         self.ship.ApplyForce(force2ship, force2position, True)
-        #
-        # else:
-        #     self.ship.ApplyForce(force2ship, force2position, True)
+        
         self.ship.ApplyForce(force2ship, force2position, True)
 
         self.world.Step(1.0 / FPS, 10, 10)
@@ -386,47 +373,16 @@ class RoutePlan(gym.Env, EzPickle):
         # ]
         # assert len(state) == 8
         state = [
-            (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-            (pos.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
+            (pos.x - self.reach_area.position.x),
+            (pos.y - self.reach_area.position.y),
             vel_scalar,
-            angle_unrotate/b2_pi,
             end_ori/b2_pi,
             end_info.distance/self.dist_norm
         ]
-        assert len(state) == 6
+        assert len(state) == 5
 
         """Reward 计算"""
         done = False
-
-        """        
-        # ship当前位置与reach area之间距离的reward计算
-        reward_dist = -end_info.distance / self.dist_norm
-        # ship与障碍物reward计算
-        sensor_rd_record = np.zeros(RAY_CAST_LASER_NUM)
-        for idx, tp_dist in enumerate(sensor_raycast['distance']):
-            if tp_dist - self.ship_radius <= 0:
-                sensor_rd_record[idx] = -1
-            if 0 < tp_dist - self.ship_radius < 1.5*self.ship_radius:
-                sensor_rd_record[idx] = -0.5
-            if self.ship_radius*1.5 < tp_dist - self.ship_radius < self.ship_radius*2:
-                sensor_rd_record[idx] = -0.25
-            if self.ship_radius*5 < tp_dist - self.ship_radius:
-                sensor_rd_record[idx] = 0
-        # 应用角度权重
-        # 前部权重累加
-        sensor_rd_record[6] *= 0.2
-        sensor_rd_record[[4, 5, 7, 8]] *= 0.15
-        sensor_rd_record[[2, 3, 9, 10]] *= 0.1
-        # 后部权重累加
-        sensor_rd_record[[14, 15, 21, 22]] *= 0.1
-        sensor_rd_record[[16, 17, 19, 20]] *= 0.15
-        sensor_rd_record[18] *= 0.2
-
-        sensor_rd_record[0:4] *= 0.05
-        sensor_rd_record[11:14] *= 0.05
-        sensor_rd_record[22:] *= 0.05
-        reward_coll = sensor_rd_record.sum()
-        """
 
         # ship角速度reward计算
         reward_ang_vel = -abs(vel_ang / b2_pi)
@@ -434,14 +390,12 @@ class RoutePlan(gym.Env, EzPickle):
         # ship投影方向速度reward计算
         if vel_scalar > 5:
             reward_vel = -1
-        elif vel2ship_proj < 0:
-            reward_vel = -20
+        elif vel_scalar < 2:
+            reward_vel = -5
         else:
             reward_vel = 0
 
-        reward_unrotate = 3 - abs(end_ori - angle_unrotate)
-
-        reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
+        # reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
         reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel
         # print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
@@ -451,7 +405,7 @@ class RoutePlan(gym.Env, EzPickle):
             if self.game_over:
                 reward = 100
             else:
-                reward = -200
+                reward = -50
             done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
@@ -512,13 +466,17 @@ def Orient_Cacul(pointA, pointB):
 
 def manual_control(key):
     global action
-    if key.event_type == "down" and key.name == 'w':
-        action[1] = 1
-    if key.event_type == 'down' and key.name == 's':
-        action[1] = -1
     if key.event_type == 'down' and key.name == 'a':
+        if key.event_type == 'down' and key.name == "w":
+            action[1] = 1
+        elif key.event_type == 'down' and key.name == 's':
+            action[1] = -1
         action[0] = -1
     if key.event_type == 'down' and key.name == 'd':
+        if key.event_type == 'down' and key.name == "w":
+            action[1] = 1
+        elif key.event_type == 'down' and key.name == 's':
+            action[1] = -1
         action[0] = 1
 
 

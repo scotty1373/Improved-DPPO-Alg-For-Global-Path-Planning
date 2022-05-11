@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 
-from Envs.sea_env import RoutePlan
+from Envs.sea_env_without_orient import RoutePlan
 from PPO.PPO import PPO
 from utils_tools.common import log2json, dirs_creat
 from tqdm import tqdm
@@ -30,10 +30,10 @@ def parse_args():
                         default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=16)
+                        default=32)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=2)
+                        default=1)
     args = parser.parse_args()
     return args
 
@@ -52,7 +52,7 @@ def main(args):
     env.unwrapped
     assert isinstance(args.batch_size, int)
     # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
-    agent = PPO(state_dim=4 * 7, action_dim=2, batch_size=args.batch_size)
+    agent = PPO(state_dim=3 * 5, action_dim=2, batch_size=args.batch_size)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)
