@@ -22,7 +22,7 @@ b2ContactListener：碰撞检测监听器
 import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
-from heat_map import HeatMap, heat_map_trans, normalize
+from .heat_map import HeatMap, heat_map_trans, normalize
 
 SCALE = 30
 FPS = 60
@@ -261,7 +261,7 @@ class RoutePlan(gym.Env, EzPickle):
         heat_map_init = HeatMap(bound_list)
         # self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
         self.heat_map = heat_map_init.ground_rewardCal
-        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra) / 2 - 1)*2
+        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
         # import matplotlib.pyplot as plt
         # import seaborn as sns
@@ -307,7 +307,7 @@ class RoutePlan(gym.Env, EzPickle):
         ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
         # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
         vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
-        
+
         self.ship.ApplyForce(force2ship, force2position, True)
 
         self.world.Step(1.0 / FPS, 10, 10)
@@ -362,8 +362,8 @@ class RoutePlan(gym.Env, EzPickle):
 
         # 状态值归一化
         # state = [
-        #     (pos.x - VIEWPORT_W/SCALE/2) / (VIEWPORT_W/SCALE/2),
-        #     (pos.y - VIEWPORT_H/SCALE) / (VIEWPORT_H/SCALE),
+        #     (pos.x - self.reach_area.position.x),
+        #     (pos.y - self.reach_area.position.y),
         #     vel.x/FPS,
         #     vel.y/FPS,
         #     angle_unrotate/b2_pi,

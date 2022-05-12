@@ -30,13 +30,32 @@ def parse_args():
                         default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=32)
+                        default=16)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=1)
+                        default=2)
+    parser.add_argument('--frame_overlay',
+                        help='data frame overlay',
+                        default=4)
+    parser.add_argument('--state_length',
+                        help='state data vector length',
+                        default=5)
+    parser.add_argument('--pixel_state',
+                        help='Image-Based Status',
+                        default=False)
     args = parser.parse_args()
     return args
 
+# 数据帧叠加
+def state_frame_overlay(new_state, old_state, frame_num):
+    new_frame_overlay = np.concatenate((new_state.reshape(1, -1),
+                                        old_state.reshape(frame_num, -1)[:(frame_num - 1), ...]),
+                                       axis=0).reshape(-1)
+    return new_frame_overlay
+
+# 基于图像的数据帧叠加
+def pixel_based(new_state, old_state, frame_num):
+    pass
 
 def main(args):
     args = args
@@ -52,7 +71,9 @@ def main(args):
     env.unwrapped
     assert isinstance(args.batch_size, int)
     # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
-    agent = PPO(state_dim=3 * 5, action_dim=2, batch_size=args.batch_size)
+    agent = PPO(state_dim=args.frame_overlay * args.state_length,
+                action_dim=2,
+                batch_size=args.batch_size)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)
@@ -72,7 +93,9 @@ def main(args):
         reward_history = 0
         entropy_history = 0
         obs, _, done, _ = env.reset()
-        obs = np.stack((obs, obs, obs), axis=0).reshape(-1)
+        # obs = np.stack((obs, obs, obs), axis=0).reshape(-1)
+        '''利用广播机制初始化state帧叠加结构，不使用stack重复对数组进行操作'''
+        obs = (np.ones((args.frame_overlay, args.state_length)) * obs).reshape(-1)
         step = tqdm(range(1, args.max_timestep*args.frame_skipping), leave=False, position=1, colour='red')
         for t in step:
             # 是否进行可视化渲染
@@ -81,7 +104,11 @@ def main(args):
                 act, logprob, dist = agent.get_action(obs)
                 # 环境交互
                 obs_t1, reward, done, _ = env.step(act)
-                obs_t1 = np.concatenate((obs_t1.reshape(1, -1), obs.reshape(3, -1)[:2, ...]), axis=0).reshape(-1)
+                if args.frame_overlay == 1:
+                    pass
+                else:
+                    obs_t1 = state_frame_overlay(obs_t1, obs, args.frame_overlay)
+                reward -= 1 / args.max_timestep * t
                 # 达到maxstep次数之后给予惩罚
                 if (t + 1) % args.max_timestep == 0:
                     done = True
@@ -145,6 +172,10 @@ def main(args):
 
             if (t + 1) % (args.max_timestep * args.frame_skipping) == 0:
                 break
+
+        # lr_Scheduler
+        agent.a_sch.step()
+        agent.c_sch.step()
 
         ep_history.append(reward_history)
         log_ep_text = {'epochs': epoch,

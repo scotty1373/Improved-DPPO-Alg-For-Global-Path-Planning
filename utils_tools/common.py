@@ -11,9 +11,9 @@ import torch
 from sys import platform
 
 TIMESTAMP = str(round(time.time()))
-KEYs_Train = ['mode', 'epochs', 'timestep', 'reward']
+KEYs_Train = ['epochs', 'time_step', 'ep_reward', 'entropy_mean']
 
-FILE_NAME = ['../log/1647000521/train_log.json', '../log/1647002312/train_log.json']
+FILE_NAME = ['../log/1652322443/train_log_ep1652322443.json']
 
 
 class log2json:
@@ -70,11 +70,10 @@ class visualize_result:
                 json_line_str = fp.readline().rstrip('\n')
                 if not json_line_str:
                     break
-                _, temp_dict = json_line_extract(json_line_str)
+                temp_dict = json_line_extract(json_line_str)
                 for key_iter in result_train.keys():
                     result_train[key_iter].append(temp_dict[key_iter])
 
-        assert len(result_train['mode']) == len(result_train['ep_reward'])
         df_train = pd.DataFrame.from_dict(result_train)
         df_train.head()
         return df_train
@@ -82,8 +81,10 @@ class visualize_result:
     @staticmethod
     def reward(logDataFrame):
         for temp in logDataFrame:
-            del temp['mode']
-            del temp['timestep']
+            try:
+                del temp['time_step']
+            except KeyError as e:
+                print('!!!Pandas Dataframe Keys Not Found!!!')
 
         df_insert = logDataFrame[0]
         for idx, df_log in enumerate(logDataFrame[1:]):
@@ -133,11 +134,7 @@ def seed_torch(seed=42):
 
 
 def json_line_extract(json_format_str):
-    dict_data = json.loads(json_format_str)
-    mode_log = True
-    if dict_data['mode'] == 'val':
-        mode_log = False
-    return mode_log, dict_data
+    return json.loads(json_format_str)
 
 
 if __name__ == '__main__':

@@ -29,14 +29,14 @@ class ActorModel(nn.Module):
                                padding=(1, 1))
         self.actv4 = nn.ReLU(inplace=True)
 
-        self.mean_fc1 = nn.Linear(128, 64)
+        self.mean_fc1 = nn.Linear(512 + self.state_dim, 64)
         self.mean_fc1act = nn.ReLU(inplace=True)
         self.mean_fc2 = nn.Linear(64, self.action_dim)
         nn.init.uniform_(self.mean_fc2.weight, 0, 3e-3)
         self.mean_fc2act = nn.Tanh()
 
         # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
-        self.log_std = nn.Linear(128, 64)
+        self.log_std = nn.Linear(512 + self.state_dim, 64)
         self.log_std1 = nn.Linear(64, self.action_dim)
         nn.init.normal_(self.log_std1.weight, 0, 3e-4)
 
@@ -46,12 +46,12 @@ class ActorModel(nn.Module):
                      self.conv4, self.actv4]
         self.extractor = nn.Sequential(*extractor)
 
-        layer = [nn.Linear(in_features=8192, out_features=128),
+        layer = [nn.Linear(in_features=8192, out_features=512),
                              nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
 
-    def forward(self, state):
-        feature_map = self.extractor(state)
+    def forward(self, state_pixel, state_vect):
+        feature_map = self.extractor(state_pixel)
         feature_map = torch.flatten(feature_map, start_dim=1,
                                     end_dim=-1)
         common_vect = self.common_layer(feature_map)

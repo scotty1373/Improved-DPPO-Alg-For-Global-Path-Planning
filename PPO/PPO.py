@@ -9,8 +9,8 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-4
-LEARNING_RATE_CRITIC = 5e-4
+LEARNING_RATE_ACTOR = 5e-5
+LEARNING_RATE_CRITIC = 1e-4
 DECAY = 0.99
 EPILSON = 0.2
 torch.autograd.set_detect_anomaly(True)
@@ -35,6 +35,8 @@ class PPO:
         self.lamda = 0.95
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
+        self.c_sch = torch.optim.lr_scheduler.StepLR(self.c_opt, step_size=100, gamma=0.1)
+        self.a_sch = torch.optim.lr_scheduler.StepLR(self.a_opt, step_size=100, gamma=0.1)
 
         # training configuration
         self.update_actor_epoch = 3

@@ -133,9 +133,9 @@ class HeatMap:
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(center, (row_offset, col_offset))
-                if dist <= self.size[0]//2 * 0.8:
+                if dist <= self.size[0]//2 * 0.9:
                     """测试修改"""
-                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * 0.8) + 4.0))
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * 0.9) + 3.8))
                 # else:
                 # if col_offset == center[1] and row_offset == center[0]:
                 #     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist + 1) + 4.0))
@@ -157,7 +157,7 @@ class HeatMap:
                     continue
                 else:
                     _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(dist - reachinfo['radius']*0.8))
-        return normalize(_mat) * 2
+        return normalize(_mat)
 
 
 if __name__ == '__main__':

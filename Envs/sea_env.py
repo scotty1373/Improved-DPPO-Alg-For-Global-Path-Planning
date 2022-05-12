@@ -22,7 +22,7 @@ b2ContactListener：碰撞检测监听器
 import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
-from .heat_map import HeatMap, heat_map_trans
+from heat_map import HeatMap, heat_map_trans
 
 SCALE = 30
 FPS = 60
@@ -272,15 +272,19 @@ class RoutePlan(gym.Env, EzPickle):
         # reward Heatmap构建
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list)
-        self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map += heat_map_init.ground_rewardCal
+        # self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
+        self.heat_map = heat_map_init.ground_rewardCal
         self.heat_map += heat_map_init.reach_rewardCal(heat_map_init.ra)
+        if self.barrier:
+            for idx, barr in enumerate(self.barrier):
+                self.world.DestroyBody(barr)
+        self.barrier.clear()
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
-        # import matplotlib.pyplot as plt
-        # import seaborn as sns
-        # fig, axes = plt.subplots(1, 1)
-        # sns.heatmap(self.heat_map, annot=False, ax=axes)
-        # plt.show()
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+        fig, axes = plt.subplots(1, 1)
+        sns.heatmap(self.heat_map, annot=False, ax=axes)
+        plt.show()
         return self.step(np.array([0, 0]))
 
     def step(self, action: np.array):
@@ -400,7 +404,7 @@ class RoutePlan(gym.Env, EzPickle):
             end_ori/b2_pi,
             end_info.distance/self.dist_norm
         ]
-        assert len(state) == 7
+        assert len(state) == 6
 
         """Reward 计算"""
         done = False
@@ -451,7 +455,7 @@ class RoutePlan(gym.Env, EzPickle):
         reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
         reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel
-        # print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
+        print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:
