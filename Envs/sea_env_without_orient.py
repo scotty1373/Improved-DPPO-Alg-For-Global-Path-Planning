@@ -127,7 +127,6 @@ class RoutePlan(gym.Env, EzPickle):
         self.prev_reward = None
         self.draw_list = None
         self.heat_map = None
-        self.dist_record = None
         self.dist_norm = 14.38
 
         # useful range is -1 .. +1, but spikes can be higher
@@ -261,31 +260,21 @@ class RoutePlan(gym.Env, EzPickle):
         # reward Heatmap构建
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list)
-        # self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map = heat_map_init.ground_rewardCal
+        self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
+        self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra)) * 5
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
-        # import matplotlib.pyplot as plt
-        # import seaborn as sns
-        # fig, axes = plt.subplots(1, 1)
-        # sns.heatmap(self.heat_map, annot=False, ax=axes)
-        # plt.show()
-        if self.barrier:
-            for idx, barr in enumerate(self.barrier):
-                self.world.DestroyBody(barr)
-        self.barrier.clear()
-        self.dist_record = None
         return self.step(np.array([0, 0]), 0)
 
-    def step(self, action: np.array, time_step):
-        action = np.clip(action, -1, 1).astype('float32')
+    def step(self, action_sample: np.array, time_step):
+        action_sample = np.clip(action_sample, -1, 1).astype('float32')
 
         if not self.ship:
             return
 
         """船体推进位置及动力大小计算"""
-        force2ship = self.remap(action[0], MAIN_ENGINE_POWER)
-        orient2ship = self.remap(action[1], MAIN_ORIENT_POWER)
+        force2ship = self.remap(action_sample[0], MAIN_ENGINE_POWER)
+        orient2ship = self.remap(action_sample[1], MAIN_ORIENT_POWER)
         orient_position = (math.cos(orient2ship)*force2ship, math.sin(orient2ship)*force2ship)
         # 计算船体local vector相对于世界vector方向
         force2ship = self.ship.GetWorldVector(localVector=(orient_position[0], orient_position[1]))
@@ -342,7 +331,7 @@ class RoutePlan(gym.Env, EzPickle):
                     sensor_raycast['distance'][vect] = (2, 25*self.ship_radius - self.ship_radius)
             else:
                 sensor_raycast['distance'][vect] = (0, 20*self.ship_radius - self.ship_radius)
-        # print(sensor_raycast['distance'])
+        sensor_raycast['distance'][..., 1] /= self.ship_radius*20
 
         pos = self.ship.position
         pos_mapping = heat_map_trans(pos)
@@ -365,31 +354,18 @@ class RoutePlan(gym.Env, EzPickle):
         vel_ang = self.ship.angularVelocity
 
         # 状态值归一化
-        # state = [
-        #     (pos.x - self.reach_area.position.x),
-        #     (pos.y - self.reach_area.position.y),
-        #     vel.x/FPS,
-        #     vel.y/FPS,
-        #     angle_unrotate/b2_pi,
-        #     end_ori/b2_pi,
-        #     end_info.distance/self.dist_norm,
-        #     [sensor_info for sensor_info in sensor_raycast['distance']/(self.ship_radius * 20)]
-        # ]
-        # assert len(state) == 8
         state = [
             (pos.x - self.reach_area.position.x)/15,
             (pos.y - self.reach_area.position.y)/30,
             vel_scalar,
             end_ori/b2_pi,
-            end_info.distance/self.dist_norm
-            # [sensor_info for sensor_info in sensor_raycast['distance']]
+            end_info.distance/self.dist_norm,
+            [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
         ]
-        assert len(state) == 5
+        assert len(state) == 6
 
         """Reward 计算"""
         done = False
-        # ship角速度reward计算
-        reward_ang_vel = -abs(vel_ang / b2_pi)
 
         # ship投影方向速度reward计算
         if vel_scalar > 5:
@@ -398,8 +374,6 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = -5
         else:
             reward_vel = 0
-
-        # reward_return = -5 if self.dist_record is not None and self.dist_record <= end_info.distance else 0
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
@@ -413,8 +387,6 @@ class RoutePlan(gym.Env, EzPickle):
             else:
                 reward = -200
             done = True
-
-        self.dist_record = end_info.distance
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
         return np.hstack(state), reward, done, {}

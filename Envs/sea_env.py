@@ -272,13 +272,9 @@ class RoutePlan(gym.Env, EzPickle):
         # reward Heatmap构建
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list)
-        # self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map = heat_map_init.ground_rewardCal
+        self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
+        self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += heat_map_init.reach_rewardCal(heat_map_init.ra)
-        if self.barrier:
-            for idx, barr in enumerate(self.barrier):
-                self.world.DestroyBody(barr)
-        self.barrier.clear()
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
         import matplotlib.pyplot as plt
         import seaborn as sns
