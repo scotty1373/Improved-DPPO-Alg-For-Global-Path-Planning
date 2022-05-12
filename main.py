@@ -15,7 +15,7 @@ def parse_args():
         description='PPO config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=2000)
+                        default=300)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
                         default=False)
@@ -36,7 +36,7 @@ def parse_args():
                         default=2)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
-                        default=4)
+                        default=3)
     parser.add_argument('--state_length',
                         help='state data vector length',
                         default=5)
@@ -103,14 +103,13 @@ def main(args):
             if t % args.frame_skipping == 0:
                 act, logprob, dist = agent.get_action(obs)
                 # 环境交互
-                obs_t1, reward, done, _ = env.step(act)
+                obs_t1, reward, done, _ = env.step(act, t)
                 if args.frame_overlay == 1:
                     pass
                 else:
                     obs_t1 = state_frame_overlay(obs_t1, obs, args.frame_overlay)
-                reward -= 1 / args.max_timestep * t
                 # 达到maxstep次数之后给予惩罚
-                if (t + 1) % args.max_timestep == 0:
+                if (t + args.frame_skipping) % args.max_timestep == 0:
                     done = True
                     reward = -10
 
@@ -168,7 +167,7 @@ def main(args):
                     break
 
             else:
-                env.step(np.zeros(2,))
+                env.step(np.zeros(2,), t)
 
             if (t + 1) % (args.max_timestep * args.frame_skipping) == 0:
                 break

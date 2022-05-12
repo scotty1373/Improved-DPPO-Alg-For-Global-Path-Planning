@@ -36,7 +36,7 @@ MAIN_ORIENT_POWER = b2_pi
 SIDE_ENGINE_POWER = 5
 
 #           Background           PolyLine
-PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # shipddddd
+PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # ship
          (0.22, 0.16, 0.27), (0.31, 0.30, 0.31),  # barriers
          (0.87, 0.4, 0.23), (0.58, 0.35, 0.28),  # reach area
          (0.25, 0.41, 0.88)]
@@ -127,6 +127,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.prev_reward = None
         self.draw_list = None
         self.heat_map = None
+        self.dist_record = None
         self.dist_norm = 14.38
 
         # useful range is -1 .. +1, but spikes can be higher
@@ -230,6 +231,7 @@ class RoutePlan(gym.Env, EzPickle):
             angle=0.0,
             angularDamping=20,
             linearDamping=2,
+            fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
                 density=10.0,
@@ -246,8 +248,8 @@ class RoutePlan(gym.Env, EzPickle):
 
         """抵达点生成"""
         # 设置抵达点位置
-        reach_center_x = W/2
-        reach_center_y = H*0.8
+        reach_center_x = W/2 * 0.6
+        reach_center_y = H*0.75
         circle_shape = b2CircleShape(radius=1.2)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
@@ -261,7 +263,7 @@ class RoutePlan(gym.Env, EzPickle):
         heat_map_init = HeatMap(bound_list)
         # self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
         self.heat_map = heat_map_init.ground_rewardCal
-        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
+        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra)) * 5
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
         # import matplotlib.pyplot as plt
         # import seaborn as sns
@@ -272,9 +274,10 @@ class RoutePlan(gym.Env, EzPickle):
             for idx, barr in enumerate(self.barrier):
                 self.world.DestroyBody(barr)
         self.barrier.clear()
-        return self.step(np.array([0, 0]))
+        self.dist_record = None
+        return self.step(np.array([0, 0]), 0)
 
-    def step(self, action: np.array):
+    def step(self, action: np.array, time_step):
         action = np.clip(action, -1, 1).astype('float32')
 
         if not self.ship:
@@ -315,7 +318,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 11 维传感器数据字典
         sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
                           'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
-                          'distance': np.zeros((RAY_CAST_LASER_NUM,))}
+                          'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
         """传感器扫描"""
         for vect in range(RAY_CAST_LASER_NUM):
             ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
@@ -333,11 +336,12 @@ class RoutePlan(gym.Env, EzPickle):
             if callback.hit:
                 sensor_raycast['points'][vect] = callback.point
                 sensor_raycast['normal'][vect] = callback.normal
-                sensor_raycast['distance'][vect] = Distance_Cacul(point1, callback.point) - self.ship_radius
+                sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
+
                 if callback.fixture == self.reach_area.fixtures[0]:
-                    sensor_raycast['distance'][vect] = 25*self.ship_radius - self.ship_radius
+                    sensor_raycast['distance'][vect] = (2, 25*self.ship_radius - self.ship_radius)
             else:
-                sensor_raycast['distance'][vect] = 20*self.ship_radius - self.ship_radius
+                sensor_raycast['distance'][vect] = (0, 20*self.ship_radius - self.ship_radius)
         # print(sensor_raycast['distance'])
 
         pos = self.ship.position
@@ -373,40 +377,44 @@ class RoutePlan(gym.Env, EzPickle):
         # ]
         # assert len(state) == 8
         state = [
-            (pos.x - self.reach_area.position.x),
-            (pos.y - self.reach_area.position.y),
+            (pos.x - self.reach_area.position.x)/15,
+            (pos.y - self.reach_area.position.y)/30,
             vel_scalar,
             end_ori/b2_pi,
             end_info.distance/self.dist_norm
+            # [sensor_info for sensor_info in sensor_raycast['distance']]
         ]
         assert len(state) == 5
 
         """Reward 计算"""
         done = False
-
         # ship角速度reward计算
         reward_ang_vel = -abs(vel_ang / b2_pi)
 
         # ship投影方向速度reward计算
         if vel_scalar > 5:
             reward_vel = -1
-        elif vel_scalar < 2:
+        elif vel_scalar < 1.5:
             reward_vel = -5
         else:
             reward_vel = 0
 
-        # reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
+        # reward_return = -5 if self.dist_record is not None and self.dist_record <= end_info.distance else 0
+
+        # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
         reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel
-        # print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
+        # print(f'reward_heat:{reward_shaping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 100
+                reward = 200
             else:
-                reward = -50
+                reward = -200
             done = True
+
+        self.dist_record = end_info.distance
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
         return np.hstack(state), reward, done, {}

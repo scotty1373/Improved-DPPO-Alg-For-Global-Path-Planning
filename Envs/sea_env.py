@@ -259,8 +259,8 @@ class RoutePlan(gym.Env, EzPickle):
         self.reach_area.color = PANEL[4]
         """
 
-        reach_center_x = W/2
-        reach_center_y = H*0.8
+        reach_center_x = W/2 * 0.8
+        reach_center_y = H*0.75
         circle_shape = b2CircleShape(radius=1.2)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
@@ -455,7 +455,7 @@ class RoutePlan(gym.Env, EzPickle):
         reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
         reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel
-        print(f'reward_heat:{reward_shapping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
+        print(f'reward_heat:{reward_shapping:.4f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:
