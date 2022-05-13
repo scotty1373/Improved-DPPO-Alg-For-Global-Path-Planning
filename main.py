@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
+import matplotlib.pyplot as plt
 import numpy as np
 
 from Envs.sea_env_without_orient import RoutePlan
 from PPO.PPO import PPO
-from utils_tools.common import log2json, dirs_creat
+from utils_tools.common import log2json, dirs_creat, TIMESTAMP
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
+import seaborn as sns
 from tqdm import tqdm
 import torch
 import argparse
 
 TIME_BOUNDARY = 500
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -24,7 +29,7 @@ def parse_args():
                         default=None)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=400)
+                        default=1000)
     parser.add_argument('--seed',
                         help='environment initialization seed',
                         default=42)
@@ -46,6 +51,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+
 # 数据帧叠加
 def state_frame_overlay(new_state, old_state, frame_num):
     new_frame_overlay = np.concatenate((new_state.reshape(1, -1),
@@ -53,9 +59,11 @@ def state_frame_overlay(new_state, old_state, frame_num):
                                        axis=0).reshape(-1)
     return new_frame_overlay
 
+
 # 基于图像的数据帧叠加
 def pixel_based(new_state, old_state, frame_num):
     pass
+
 
 def main(args):
     args = args
@@ -79,6 +87,12 @@ def main(args):
     logger_iter = log2json(filename='train_log_iter', type_json=True)
     # epoch log初始化
     logger_ep = log2json(filename='train_log_ep', type_json=True)
+    # tensorboard初始化
+    tb_logger = SummaryWriter(log_dir=f"./log/{TIMESTAMP}", flush_secs=120)
+    fig, ax1 = plt.subplots(1, 1)
+    sns.heatmap(env.heat_map, ax=ax1)
+    fig.suptitle('reward shaping heatmap')
+    tb_logger.add_figure('figure', fig)
 
     # 是否从预训练结果中载入ckpt
     if args.pre_train:
@@ -187,6 +201,16 @@ def main(args):
                                f'entropy:{log_ep_text["entropy_mean"]:.1f}')
         # epoch数据写入log文件
         logger_ep.write2json(log_ep_text)
+
+        # tensorboard logger
+        tb_logger.add_scalar(tag='Loss/ep_reward',
+                             scalar_value=reward_history,
+                             global_step=epoch)
+        tb_logger.add_scalar(tag='Loss/ep_entropy',
+                             scalar_value=log_ep_text["entropy_mean"],
+                             global_step=epoch)
+
+    agent.save_model(f'./save_model/save_model_ep{epoch}.pth')
     env.close()
 
 

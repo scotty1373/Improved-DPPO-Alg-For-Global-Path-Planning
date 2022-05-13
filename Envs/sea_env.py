@@ -201,7 +201,7 @@ class RoutePlan(gym.Env, EzPickle):
                 self.world.CreateStaticBody(shapes=b2CircleShape(
                     pos=(shift_x[idxbr // CHUNKS, idxbr % CHUNKS]+random_noise_x,
                          shift_y[idxbr // CHUNKS, idxbr % CHUNKS]+random_noise_y),
-                    radius=1.2)))
+                    radius=1)))
         #     x.append(shift_x[idxbr // CHUNKS, idxbr % CHUNKS])
         #     y.append(shift_y[idxbr // CHUNKS, idxbr % CHUNKS])
         # import matplotlib.pyplot as plt
@@ -261,7 +261,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         reach_center_x = W/2 * 0.8
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=1.2)
+        circle_shape = b2CircleShape(radius=1)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape

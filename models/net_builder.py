@@ -24,7 +24,7 @@ class ActorModel(nn.Module):
         self.mean_fc2 = nn.Linear(64, 64)
         self.mean_fc2act = nn.ReLU(inplace=True)
         self.mean_fc3 = nn.Linear(64, self.action_dim)
-        nn.init.uniform_(self.mean_fc3.weight, 0, 3e-3)
+        nn.init.uniform_(self.mean_fc3.weight, -3e-3, 0)
         self.mean_fc3act = nn.Tanh()
         self.mean_fc4act_acc = nn.Sigmoid()
 
@@ -52,7 +52,7 @@ class ActorModel(nn.Module):
         # action_std = torch.exp(self.log_std)
         dist = Normal(action_mean, action_std + 1e-8)
         action_sample = dist.sample()
-        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.5, 1)
+        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
         action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
         # try:
         #     action_sample[..., 1] = torch.clamp(action_sample[..., 1], -0.7, 0.7)
@@ -69,13 +69,13 @@ class CriticModel(nn.Module):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.fc = nn.Sequential(
-            layer_init(nn.Linear(self.state_dim, 256)),
+            layer_init(nn.Linear(self.state_dim, 512)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(256, 256)),
+            layer_init(nn.Linear(512, 256)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(256, 64)),
+            layer_init(nn.Linear(256, 128)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(64, 1)))
+            layer_init(nn.Linear(128, 1)))
 
     def forward(self, state):
         value = self.fc(state)

@@ -9,7 +9,7 @@ import Box2D
 from Box2D import (b2CircleShape, b2EdgeShape)
 
 ORG_SCALE = 16
-REMAP_SACLE = 30
+REMAP_SACLE = 40
 RATIO = REMAP_SACLE/ORG_SCALE
 
 
@@ -17,12 +17,15 @@ def heat_map_trans(vect, *, ratio=REMAP_SACLE/ORG_SCALE):
     remap_vect = np.array((vect[0] * ratio + (REMAP_SACLE / 2), (-vect[1] * ratio) + REMAP_SACLE), dtype=np.uint8)
     return remap_vect
 
+
 def get_dist(pointa, pointb):
     return np.sqrt(np.square(pointa[0] - pointb[0]) + np.square(pointa[1] - pointb[1]))
+
 
 def normalize(array):
     assert isinstance(array, np.ndarray)
     return (array - array.min()) / (array.max() - array.min())
+
 
 class HeatMap:
     def __init__(self, bound_list):
@@ -137,12 +140,12 @@ class HeatMap:
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(center, (row_offset, col_offset))
-                if dist <= self.size[0]//2 * 0.9:
+                if dist <= self.size[0]//2 * 0.4:
                     """测试修改"""
-                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * 0.9) + 3.8))
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * 0.4) + 3.8))
                 else:
                     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8))
-        return - 1 + normalize(_mat)
+        return (- 1 + normalize(_mat)) * 2
 
     def reach_rewardCal(self, reachinfo):
         """

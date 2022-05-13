@@ -91,6 +91,8 @@ class ContactDetector(b2ContactListener):
             self.env.ship.contact = True
             if self.env.reach_area == contact.fixtureA.body or self.env.reach_area == contact.fixtureB.body:
                 self.env.game_over = True
+            elif self.env.ground == contact.fixtureA.body or self.env.ground == contact.fixtureB.body:
+                self.env.barrier_contect = True
 
     def EndContact(self, contact):
         if self.env.ship in [contact.fixtureA.body, contact.fixtureB.body]:
@@ -124,7 +126,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         # game状态记录
         self.game_over = None
-        self.prev_reward = None
+        self.barrier_contect = None
         self.draw_list = None
         self.heat_map = None
         self.dist_norm = 14.38
@@ -158,6 +160,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.world.contactListener_keepref = ContactDetector(self)
         self.world.contactListener = self.world.contactListener_keepref
         self.game_over = False
+        self.barrier_contect = False
 
         W = VIEWPORT_W / SCALE
         H = VIEWPORT_H / SCALE
@@ -201,7 +204,7 @@ class RoutePlan(gym.Env, EzPickle):
                 self.world.CreateStaticBody(shapes=b2CircleShape(
                     pos=(shift_x[idxbr // CHUNKS, idxbr % CHUNKS]+random_noise_x,
                          shift_y[idxbr // CHUNKS, idxbr % CHUNKS]+random_noise_y),
-                    radius=1.2)))
+                    radius=1)))
         #     x.append(shift_x[idxbr // CHUNKS, idxbr % CHUNKS])
         #     y.append(shift_y[idxbr // CHUNKS, idxbr % CHUNKS])
         # import matplotlib.pyplot as plt
@@ -249,7 +252,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 设置抵达点位置
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=1.2)
+        circle_shape = b2CircleShape(radius=1)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
@@ -262,8 +265,7 @@ class RoutePlan(gym.Env, EzPickle):
         heat_map_init = HeatMap(bound_list)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
         self.heat_map += heat_map_init.ground_rewardCal
-        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra)) * 5
-        # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
+        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra)) * 3
         return self.step(np.array([0, 0]), 0)
 
     def step(self, action_sample: np.array, time_step):
@@ -309,11 +311,10 @@ class RoutePlan(gym.Env, EzPickle):
                           'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
                           'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
         """传感器扫描"""
+        length = self.ship_radius * 10      # Set up the raycast line
+        point1 = self.ship.position
         for vect in range(RAY_CAST_LASER_NUM):
             ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
-            # Set up the raycast line
-            length = self.ship_radius*20
-            point1 = self.ship.position
             d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
             point2 = point1 + d
 
@@ -325,13 +326,15 @@ class RoutePlan(gym.Env, EzPickle):
             if callback.hit:
                 sensor_raycast['points'][vect] = callback.point
                 sensor_raycast['normal'][vect] = callback.normal
-                sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
-
                 if callback.fixture == self.reach_area.fixtures[0]:
-                    sensor_raycast['distance'][vect] = (2, 25*self.ship_radius - self.ship_radius)
+                    sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
+                elif callback.fixture in self.ground.fixtures:
+                    sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
+                else:
+                    sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
             else:
-                sensor_raycast['distance'][vect] = (0, 20*self.ship_radius - self.ship_radius)
-        sensor_raycast['distance'][..., 1] /= self.ship_radius*20
+                sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
+        sensor_raycast['distance'][..., 1] /= self.ship_radius*10
 
         pos = self.ship.position
         pos_mapping = heat_map_trans(pos)
@@ -355,8 +358,8 @@ class RoutePlan(gym.Env, EzPickle):
 
         # 状态值归一化
         state = [
-            (pos.x - self.reach_area.position.x)/15,
-            (pos.y - self.reach_area.position.y)/30,
+            (pos.x - self.reach_area.position.x)/8,
+            (pos.y - self.reach_area.position.y)/16,
             vel_scalar,
             end_ori/b2_pi,
             end_info.distance/self.dist_norm,
@@ -384,8 +387,10 @@ class RoutePlan(gym.Env, EzPickle):
         if self.ship.contact:
             if self.game_over:
                 reward = 200
-            else:
+            elif self.barrier_contect:
                 reward = -200
+            else:
+                reward = -10
             done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
