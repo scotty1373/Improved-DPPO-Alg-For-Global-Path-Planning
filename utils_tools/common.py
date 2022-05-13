@@ -13,7 +13,7 @@ from sys import platform
 TIMESTAMP = str(round(time.time()))
 KEYs_Train = ['epochs', 'time_step', 'ep_reward', 'entropy_mean']
 
-FILE_NAME = ['../log/1652353077/train_log_ep1652353077.json']
+FILE_NAME = ['../log/1652358521/train_log_ep1652358521.json']
 
 
 class log2json:

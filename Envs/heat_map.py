@@ -130,8 +130,7 @@ class HeatMap:
     @property
     def ground_rewardCal(self):
         """
-        :param _mat: numpy ndarray
-        :return:
+        :return: 2D-array
         """
         _mat = self.mat.copy()
         center = (self.size[0]//2, self.size[1]//2)
@@ -141,9 +140,6 @@ class HeatMap:
                 if dist <= self.size[0]//2 * 0.9:
                     """测试修改"""
                     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * 0.9) + 3.8))
-                # else:
-                # if col_offset == center[1] and row_offset == center[0]:
-                #     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist + 1) + 4.0))
                 else:
                     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8))
         return - 1 + normalize(_mat)
