@@ -4,7 +4,7 @@ import numpy as np
 
 from Envs.sea_env_without_orient import RoutePlan
 from PPO.PPO import PPO
-from utils_tools.common import log2json, dirs_creat, TIMESTAMP
+from utils_tools.common import log2json, dirs_creat, TIMESTAMP, seed_torch
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -35,7 +35,7 @@ def parse_args():
                         default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=16)
+                        default=32)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
                         default=2)
@@ -79,6 +79,7 @@ def main(args):
     env.unwrapped
     assert isinstance(args.batch_size, int)
     # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
+    seed_torch()
     agent = PPO(state_dim=args.frame_overlay * args.state_length,
                 action_dim=2,
                 batch_size=args.batch_size)

@@ -424,7 +424,7 @@ class RoutePlan(gym.Env, EzPickle):
                         self.viewer.draw_polygon(path, color=PANEL[4])
                         self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
         # return self.viewer.render(return_rgb_array=mode == 'rgb_array')
-        return self.viewer.render(return_rgb_array=True)
+        return self.viewer.render(return_rgb_array=False)
 
     @staticmethod
     def remap(action, remap_range):

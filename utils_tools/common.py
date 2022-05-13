@@ -6,6 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import random
 import os
 import torch
 from sys import platform
@@ -119,7 +120,7 @@ def dirs_creat():
 
 
 # 设置相同训练种子
-def seed_torch(seed=42):
+def seed_torch(seed=2331):
     seed = int(seed)
     random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)

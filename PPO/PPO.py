@@ -39,8 +39,8 @@ class PPO:
         self.a_sch = torch.optim.lr_scheduler.StepLR(self.a_opt, step_size=100, gamma=0.1)
 
         # training configuration
-        self.update_actor_epoch = 3
-        self.update_critic_epoch = 3
+        self.update_actor_epoch = 2
+        self.update_critic_epoch = 2
         self.history_critic = 0
         self.history_actor = 0
         self.t = 0
@@ -141,9 +141,10 @@ class PPO:
         surrogate1_acc = ratio * advantage
         surrogate2_acc = torch.clamp(ratio, 1-self.epilson, 1+self.epilson) * advantage
 
-        actor_loss_index = torch.min(abs(torch.cat((surrogate1_acc, surrogate2_acc), dim=1)), dim=1)[1].reshape(-1, 1)
-        actor_loss = torch.cat((surrogate1_acc, surrogate2_acc), dim=1)
-        actor_loss = torch.gather(actor_loss, dim=1, index=actor_loss_index)
+        actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
+        # actor_loss_index = torch.min(abs(torch.cat((surrogate1_acc, surrogate2_acc), dim=1)), dim=1)[1].reshape(-1, 1)
+        # actor_loss = torch.cat((surrogate1_acc, surrogate2_acc), dim=1)
+        # actor_loss = torch.gather(actor_loss, dim=1, index=actor_loss_index)
 
         self.a_opt.zero_grad()
         actor_loss = -torch.mean(actor_loss)
