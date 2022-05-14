@@ -55,6 +55,7 @@ class ActorModel(nn.Module):
         feature_map = torch.flatten(feature_map, start_dim=1,
                                     end_dim=-1)
         common_vect = self.common_layer(feature_map)
+        common_vect = torch.cat((common_vect, state_vect), dim=-1)
         action_mean = self.mean_fc1(common_vect)
         action_mean = self.mean_fc1act(action_mean)
         action_mean = self.mean_fc2(action_mean)
@@ -70,7 +71,7 @@ class ActorModel(nn.Module):
         action_sample = torch.clamp(action_sample, -1, 1)
         action_logprob = dist.log_prob(action_sample)
 
-        return action_sample, action_logprob, dist
+        return action_sample, action_logprob
 
 
 class CriticModel(nn.Module):
@@ -128,9 +129,13 @@ def layer_init(layer, *, mean=0, std=0.1):
 
 
 if __name__ == '__main__':
-    model = ActorModel(0, 2)
+    model = ActorModel(48, 2)
     model_critic = CriticModel(0, 2)
     x = torch.randn((10, 4, 80, 80))
-    out = model(x)
+    x_vect = torch.rand((10, 48))
+    out = model(x, x_vect)
     out_critic = model_critic(x)
+    from torch.utils.tensorboard import SummaryWriter
+    logger = SummaryWriter(log_dir='./', flush_secs=100)
+    logger.add_graph(model, (x, x_vect))
     out.shape
