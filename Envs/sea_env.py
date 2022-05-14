@@ -228,7 +228,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.ship = self.world.CreateDynamicBody(
             position=(initial_position_x, initial_position_y),
             angle=0.0,
-            angularDamping=20,
+            angularDamping=1,
             linearDamping=2,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),

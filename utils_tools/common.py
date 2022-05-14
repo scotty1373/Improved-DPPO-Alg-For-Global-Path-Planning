@@ -145,6 +145,3 @@ if __name__ == '__main__':
         df.append(vg.json2DataFrame(fp))
 
     vg.reward(df)
-
-
-
