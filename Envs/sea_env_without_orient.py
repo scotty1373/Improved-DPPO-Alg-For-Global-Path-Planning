@@ -23,6 +23,7 @@ import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
 from .heat_map import HeatMap, heat_map_trans, normalize
+from utils_tools.utils import img_proc
 
 SCALE = 30
 FPS = 60
@@ -387,11 +388,13 @@ class RoutePlan(gym.Env, EzPickle):
         if self.ship.contact:
             if self.game_over:
                 reward = 200
+
             elif self.barrier_contect:
                 reward = -200
             else:
                 reward = -10
             done = True
+
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
         return np.hstack(state), reward, done, {}
@@ -424,7 +427,7 @@ class RoutePlan(gym.Env, EzPickle):
                         self.viewer.draw_polygon(path, color=PANEL[4])
                         self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
         # return self.viewer.render(return_rgb_array=mode == 'rgb_array')
-        return self.viewer.render(return_rgb_array=False)
+        return self.viewer.render(return_rgb_array=True)
 
     @staticmethod
     def remap(action, remap_range):

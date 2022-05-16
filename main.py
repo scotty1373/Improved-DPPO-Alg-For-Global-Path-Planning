@@ -6,6 +6,7 @@ from Envs.sea_env_without_orient import RoutePlan
 from PPO.PPO import PPO
 from utils_tools.common import log2json, dirs_creat, TIMESTAMP, seed_torch
 from torch.utils.tensorboard import SummaryWriter
+from utils_tools.utils import state_frame_overlay, pixel_based, img_proc
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
@@ -13,14 +14,14 @@ import torch
 import argparse
 
 TIME_BOUNDARY = 500
-
+IMG_SIZE = (80, 80)
 
 def parse_args():
     parser = argparse.ArgumentParser(
         description='PPO config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=300)
+                        default=2000)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
                         default=False)
@@ -52,19 +53,6 @@ def parse_args():
     return args
 
 
-# 数据帧叠加
-def state_frame_overlay(new_state, old_state, frame_num):
-    new_frame_overlay = np.concatenate((new_state.reshape(1, -1),
-                                        old_state.reshape(frame_num, -1)[:(frame_num - 1), ...]),
-                                       axis=0).reshape(-1)
-    return new_frame_overlay
-
-
-# 基于图像的数据帧叠加
-def pixel_based(new_state, old_state, frame_num):
-    pass
-
-
 def main(args):
     args = args
     # 是否随机初始化种子
@@ -82,7 +70,8 @@ def main(args):
     seed_torch()
     agent = PPO(state_dim=args.frame_overlay * args.state_length,
                 action_dim=2,
-                batch_size=args.batch_size)
+                batch_size=args.batch_size,
+                overlay=args.frame_overlay)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)
@@ -110,19 +99,27 @@ def main(args):
         obs, _, done, _ = env.reset()
         # obs = np.stack((obs, obs, obs), axis=0).reshape(-1)
         '''利用广播机制初始化state帧叠加结构，不使用stack重复对数组进行操作'''
-        obs = (np.ones((args.frame_overlay, args.state_length)) * obs).reshape(-1)
+        obs = (np.ones((args.frame_overlay, args.state_length)) * obs).reshape(1, -1)
+        pixel_obs_ori = env.render(mode='rgb_array')
+        pixel_obs = img_proc(pixel_obs_ori) * np.ones((1, 3, 80, 80))
+
+        # tqdm初始化
         step = tqdm(range(1, args.max_timestep*args.frame_skipping), leave=False, position=1, colour='red')
         for t in step:
             # 是否进行可视化渲染
             env.render()
             if t % args.frame_skipping == 0:
-                act, logprob, dist = agent.get_action(obs)
+                act, logprob, dist = agent.get_action((pixel_obs, obs))
                 # 环境交互
-                obs_t1, reward, done, _ = env.step(act, t)
+                obs_t1, reward, done, _ = env.step(act.squeeze(), t)
+                pixel_obs_t1_ori = env.render()
+                pixel_obs_t1 = img_proc(pixel_obs_t1_ori)
+                # 随机漫步如果为1则不进行数据庞拼接
                 if args.frame_overlay == 1:
                     pass
                 else:
                     obs_t1 = state_frame_overlay(obs_t1, obs, args.frame_overlay)
+                    pixel_obs_t1 = pixel_based(pixel_obs_t1, pixel_obs, args.frame_overlay)
                 # 达到maxstep次数之后给予惩罚
                 if (t + args.frame_skipping) % args.max_timestep == 0:
                     done = True
@@ -131,23 +128,26 @@ def main(args):
                 if not args.pre_train:
 
                     # 状态存储
-                    agent.state_store_memory(obs, act, reward, logprob)
+                    agent.state_store_memory(pixel_obs, obs, act, reward, logprob)
 
                     if t % (args.frame_skipping*agent.batch_size) == 0 or (done and t % (agent.batch_size*args.frame_skipping) > 5):
-                        state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
-                        state = np.stack(state, axis=0)
-                        action = np.stack(action, axis=0)
+                        pixel_state, vect_state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
+
+                        pixel_state = np.concatenate(pixel_state, axis=0)
+                        vect_state = np.concatenate(vect_state, axis=0)
+                        action = np.concatenate(action, axis=0)
                         reward_nstep = np.stack(reward_nstep, axis=0)
-                        logprob_nstep = np.stack(logprob_nstep, axis=0)
+                        logprob_nstep = np.concatenate(logprob_nstep, axis=0)
                         # 动作价值计算
-                        discount_reward = agent.decayed_reward(obs_t1, reward_nstep)
+                        discount_reward = agent.decayed_reward((pixel_obs_t1, obs_t1), reward_nstep)
 
                         # 计算gae advantage
                         with torch.no_grad():
-                            last_frame = torch.Tensor(obs_t1)
-                            last_val = agent.v(last_frame)
+                            last_frame_pixel = torch.Tensor(pixel_obs_t1)
+                            last_frame_vect = torch.Tensor(obs_t1)
+                            last_val = agent.v(last_frame_pixel, last_frame_vect)
                         # 策略网络价值网络更新
-                        agent.update(state, action, logprob_nstep, discount_reward, reward_nstep, last_val, done)
+                        agent.update(pixel_state, vect_state, action, logprob_nstep, discount_reward, reward_nstep, last_val, done)
                         # 清空存储池
                         agent.memory.clear()
                 entropy = dist.entropy().numpy().sum().item()
@@ -155,8 +155,8 @@ def main(args):
                             'time_step': agent.t,
                             'reward': reward,
                             'entropy': entropy,
-                            'acc': act[0].item(),
-                            'ori': act[1].item(),
+                            'acc': act.squeeze()[0].item(),
+                            'ori': act.squeeze()[1].item(),
                             'actor_loss': agent.history_actor,
                             'critic_loss': agent.history_critic}
                 step.set_description(f'epochs:{epoch}, '
@@ -175,6 +175,7 @@ def main(args):
                 # 记录timestep, reward＿sum
                 agent.t += 1
                 obs = obs_t1
+                pixel_obs = pixel_obs_t1
                 reward_history += reward
                 entropy_history += entropy
 
@@ -211,7 +212,7 @@ def main(args):
                              scalar_value=log_ep_text["entropy_mean"],
                              global_step=epoch)
 
-    agent.save_model(f'./save_model/save_model_ep{epoch}.pth')
+    agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
     env.close()
 
 

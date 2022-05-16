@@ -10,11 +10,12 @@ from torch.distributions import Normal
 import numpy as np
 
 class ActorModel(nn.Module):
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, frame_overlay):
         super(ActorModel, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.conv1 = nn.Conv2d(in_channels=4, out_channels=16,
+        self.frame_overlay = frame_overlay
+        self.conv1 = nn.Conv2d(in_channels=self.frame_overlay, out_channels=16,
                                kernel_size=(8, 8), stride=(4, 4))
         self.actv1 = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(in_channels=16, out_channels=32,
@@ -29,14 +30,15 @@ class ActorModel(nn.Module):
                                padding=(1, 1))
         self.actv4 = nn.ReLU(inplace=True)
 
-        self.mean_fc1 = nn.Linear(512 + self.state_dim, 64)
+        self.mean_fc1 = nn.Linear(128 + self.state_dim, 64)
         self.mean_fc1act = nn.ReLU(inplace=True)
         self.mean_fc2 = nn.Linear(64, self.action_dim)
         nn.init.uniform_(self.mean_fc2.weight, 0, 3e-3)
-        self.mean_fc2act = nn.Tanh()
+        self.mean_fc2act_ori = nn.Tanh()
+        self.mean_fc2act_acc = nn.Sigmoid()
 
         # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
-        self.log_std = nn.Linear(512 + self.state_dim, 64)
+        self.log_std = nn.Linear(128 + self.state_dim, 64)
         self.log_std1 = nn.Linear(64, self.action_dim)
         nn.init.normal_(self.log_std1.weight, 0, 3e-4)
 
@@ -46,7 +48,7 @@ class ActorModel(nn.Module):
                      self.conv4, self.actv4]
         self.extractor = nn.Sequential(*extractor)
 
-        layer = [nn.Linear(in_features=8192, out_features=512),
+        layer = [nn.Linear(in_features=8192, out_features=128),
                              nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
 
@@ -59,7 +61,8 @@ class ActorModel(nn.Module):
         action_mean = self.mean_fc1(common_vect)
         action_mean = self.mean_fc1act(action_mean)
         action_mean = self.mean_fc2(action_mean)
-        action_mean = self.mean_fc2act(action_mean)
+        action_mean[..., 1] = self.mean_fc2act_ori(action_mean[..., 1])
+        action_mean[..., 0] = self.mean_fc2act_acc(action_mean[..., 0])
         
         action_std = self.log_std(common_vect)
         action_std = nn.functional.relu(action_std, inplace=True)
@@ -68,18 +71,20 @@ class ActorModel(nn.Module):
 
         dist = Normal(action_mean, action_std + 1e-8)
         action_sample = dist.sample()
-        action_sample = torch.clamp(action_sample, -1, 1)
+        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
+        action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
         action_logprob = dist.log_prob(action_sample)
 
-        return action_sample, action_logprob
+        return action_sample, action_logprob, dist
 
 
 class CriticModel(nn.Module):
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, frame_overlay):
         super(CriticModel, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
-        self.conv1 = nn.Conv2d(in_channels=4, out_channels=16,
+        self.frame_overlay = frame_overlay
+        self.conv1 = nn.Conv2d(in_channels=frame_overlay, out_channels=16,
                                kernel_size=(8, 8), stride=(4, 4))
         self.actv1 = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(in_channels=16, out_channels=32,
@@ -95,7 +100,7 @@ class CriticModel(nn.Module):
         self.actv4 = nn.ReLU(inplace=True)
 
         self.fc = nn.Sequential(
-            layer_init(nn.Linear(256, 128)),
+            layer_init(nn.Linear(256+self.state_dim, 128)),
             nn.ReLU(inplace=True),
             layer_init(nn.Linear(128, 64)),
             nn.ReLU(inplace=True),
@@ -111,12 +116,13 @@ class CriticModel(nn.Module):
                  nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
 
-    def forward(self, state):
+    def forward(self, state, state_vect):
         feature_map = self.extractor(state)
         feature_map = torch.flatten(feature_map, start_dim=1,
                                     end_dim=-1)
         feature_map = torch.flatten(feature_map, start_dim=1, end_dim=-1)
         common_vect = self.common_layer(feature_map)
+        common_vect = torch.cat((common_vect, state_vect), dim=-1)
         common_vect = self.fc(common_vect)
 
         return common_vect
@@ -131,7 +137,7 @@ def layer_init(layer, *, mean=0, std=0.1):
 if __name__ == '__main__':
     model = ActorModel(48, 2)
     model_critic = CriticModel(0, 2)
-    x = torch.randn((10, 4, 80, 80))
+    x = torch.randn((10, 3, 80, 80))
     x_vect = torch.rand((10, 48))
     out = model(x, x_vect)
     out_critic = model_critic(x)
