@@ -33,7 +33,7 @@ def parse_args():
                         default=1000)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42)
+                        default=None)
     parser.add_argument('--batch_size',
                         help='training batch size',
                         default=32)
@@ -67,7 +67,7 @@ def main(args):
     env.unwrapped
     assert isinstance(args.batch_size, int)
     # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
-    seed_torch()
+    seed_torch(seed=2138903)
     agent = PPO(state_dim=args.frame_overlay * args.state_length,
                 action_dim=2,
                 batch_size=args.batch_size,

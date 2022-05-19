@@ -40,7 +40,7 @@ SIDE_ENGINE_POWER = 5
 PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # ship
          (0.22, 0.16, 0.27), (0.31, 0.30, 0.31),  # barriers
          (0.87, 0.4, 0.23), (0.58, 0.35, 0.28),  # reach area
-         (0.25, 0.41, 0.88)]
+         (0.25, 0.41, 0.88), (0, 0, 0)]
 
 RAY_CAST_LASER_NUM = 24
 
@@ -189,10 +189,10 @@ class RoutePlan(gym.Env, EzPickle):
         shift_x, shift_y = np.meshgrid(shift_x, shift_y)
         if self.seed_num is not None:
             np.random.seed(self.seed_num)
-        index = np.random.choice([i for i in range(CHUNKS ** 2)], self.barrier_num, replace=False)
+        index = np.random.choice([i for i in range(CHUNKS ** 2)], self.barrier_num + 1, replace=False)
         # print(index)
         # x, y = [], []
-        for idxbr in index:
+        for idxbr in index[:-1]:
             # 控制障碍物生成位置在圈定范围之内60％部分
             if self.seed_num is not None:
                 self.np_random.seed(self.seed_num)
@@ -237,8 +237,8 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=10.0,
-                friction=12,
+                density=5,
+                friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
                 restitution=0.0)    # 0.99 bouncy
@@ -254,7 +254,7 @@ class RoutePlan(gym.Env, EzPickle):
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
         circle_shape = b2CircleShape(radius=1)
-        self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
+        self.reach_area = self.world.CreateStaticBody(position=(shift_x[index[-1] // CHUNKS, index[-1] % CHUNKS], shift_y[index[-1] // CHUNKS, index[-1] % CHUNKS]),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
                                                       ))
@@ -267,6 +267,11 @@ class RoutePlan(gym.Env, EzPickle):
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
         self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra)) * 3
+        # import matplotlib.pyplot as plt
+        # import seaborn as sns
+        # fig, axes = plt.subplots(1, 1)
+        # sns.heatmap(self.heat_map, annot=False, ax=axes)
+        # plt.show()
         return self.step(np.array([0, 0]), 0)
 
     def step(self, action_sample: np.array, time_step):
@@ -372,10 +377,10 @@ class RoutePlan(gym.Env, EzPickle):
         done = False
 
         # ship投影方向速度reward计算
-        if vel_scalar > 5:
+        if vel_scalar > 3:
             reward_vel = -1
-        elif vel_scalar < 1.5:
-            reward_vel = -5
+        elif vel_scalar < 0:
+            reward_vel = -4
         else:
             reward_vel = 0
 
@@ -425,7 +430,7 @@ class RoutePlan(gym.Env, EzPickle):
                         self.viewer.draw_polyline(path, color=obj.color_fg, linewidth=2)
                     else:
                         self.viewer.draw_polygon(path, color=PANEL[4])
-                        self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
+                        self.viewer.draw_polyline(path, color=PANEL[7], linewidth=10)
         # return self.viewer.render(return_rgb_array=mode == 'rgb_array')
         return self.viewer.render(return_rgb_array=True)
 

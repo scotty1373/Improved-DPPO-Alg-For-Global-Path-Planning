@@ -276,11 +276,11 @@ class RoutePlan(gym.Env, EzPickle):
         self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += heat_map_init.reach_rewardCal(heat_map_init.ra)
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        fig, axes = plt.subplots(1, 1)
-        sns.heatmap(self.heat_map, annot=False, ax=axes)
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # import seaborn as sns
+        # fig, axes = plt.subplots(1, 1)
+        # sns.heatmap(self.heat_map, annot=False, ax=axes)
+        # plt.show()
         return self.step(np.array([0, 0]))
 
     def step(self, action: np.array):
@@ -490,7 +490,7 @@ class RoutePlan(gym.Env, EzPickle):
                         self.viewer.draw_polyline(path, color=obj.color_fg, linewidth=2)
                     else:
                         self.viewer.draw_polygon(path, color=PANEL[4])
-                        self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
+                        self.viewer.draw_polyline(path, color=PANEL[5], linewidth=10)
         # return self.viewer.render(return_rgb_array=mode == 'rgb_array')
         return self.viewer.render(return_rgb_array=True)
 
