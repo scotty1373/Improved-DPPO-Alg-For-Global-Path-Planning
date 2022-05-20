@@ -33,19 +33,22 @@ def parse_args():
                         default=1000)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=None)
+                        default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=32)
+                        default=16)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
                         default=2)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
                         default=3)
+    # parser.add_argument('--state_length',
+    #                     help='state data vector length',
+    #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=5+24*2)
+                        default=3)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
                         default=False)
@@ -95,7 +98,8 @@ def main(args):
 
     for epoch in epochs:
         reward_history = 0
-        entropy_history = 0
+        entropy_acc_history = 0
+        entropy_ori_history = 0
         obs, _, done, _ = env.reset()
         # obs = np.stack((obs, obs, obs), axis=0).reshape(-1)
         '''利用广播机制初始化state帧叠加结构，不使用stack重复对数组进行操作'''
@@ -150,11 +154,14 @@ def main(args):
                         agent.update(pixel_state, vect_state, action, logprob_nstep, discount_reward, reward_nstep, last_val, done)
                         # 清空存储池
                         agent.memory.clear()
-                entropy = dist.entropy().numpy().sum().item()
+                entropy_temp = dist.entropy().cpu().numpy().squeeze()
+                entropy_acc = entropy_temp[0].item()
+                entropy_ori = entropy_temp[1].item()
                 log_text = {'epochs': epoch,
                             'time_step': agent.t,
                             'reward': reward,
-                            'entropy': entropy,
+                            'entropy_acc': entropy_acc,
+                            'entropy_ori': entropy_ori,
                             'acc': act.squeeze()[0].item(),
                             'ori': act.squeeze()[1].item(),
                             'actor_loss': agent.history_actor,
@@ -162,7 +169,8 @@ def main(args):
                 step.set_description(f'epochs:{epoch}, '
                                      f'time_step:{agent.t}, '
                                      f'reward:{reward:.1f}, '
-                                     f'entropy: {log_text["entropy"]:.1f}, '
+                                     f'et_acc: {log_text["entropy_acc"]:.1f}, '
+                                     f'et_ori: {log_text["entropy_ori"]:.1f}, '
                                      f'acc:{log_text["acc"]:.1f}, '
                                      f'ori:{log_text["ori"]:.1f}, '
                                      f'lr:{agent.a_opt.state_dict()["param_groups"][0]["lr"]:.5f}, '
@@ -177,8 +185,8 @@ def main(args):
                 obs = obs_t1
                 pixel_obs = pixel_obs_t1
                 reward_history += reward
-                entropy_history += entropy
-
+                entropy_acc_history += entropy_acc
+                entropy_ori_history += entropy_ori
                 if done:
                     break
 
@@ -196,11 +204,13 @@ def main(args):
         log_ep_text = {'epochs': epoch,
                        'time_step': agent.t,
                        'ep_reward': reward_history,
-                       'entropy_mean': entropy_history / (t+1)}
+                       'entropy_acc_mean': entropy_acc_history / (t+1),
+                       'entropy_ori_mean': entropy_ori_history / (t+1)}
         epochs.set_description(f'epochs:{epoch}, '
                                f'time_step:{agent.t}, '
                                f'reward:{reward_history:.1f}, '
-                               f'entropy:{log_ep_text["entropy_mean"]:.1f}')
+                               f'entropy_acc:{log_ep_text["entropy_acc_mean"]:.1f}, '
+                               f'entropy_ori:{log_ep_text["entropy_ori_mean"]:.1f}')
         # epoch数据写入log文件
         logger_ep.write2json(log_ep_text)
 
@@ -208,8 +218,11 @@ def main(args):
         tb_logger.add_scalar(tag='Loss/ep_reward',
                              scalar_value=reward_history,
                              global_step=epoch)
-        tb_logger.add_scalar(tag='Loss/ep_entropy',
-                             scalar_value=log_ep_text["entropy_mean"],
+        tb_logger.add_scalar(tag='Loss/ep_entropy_acc',
+                             scalar_value=log_ep_text["entropy_acc_mean"],
+                             global_step=epoch)
+        tb_logger.add_scalar(tag='Loss/ep_entropy_ori',
+                             scalar_value=log_ep_text["entropy_ori_mean"],
                              global_step=epoch)
 
     agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')

@@ -49,6 +49,11 @@ SHIP_POLY = [
     (+8, -6), (+8, +6), (0, +8)
     ]
 
+RECH_RECT = [
+    (-0.5, +0.5), (-0.5, -0.5),
+    (+0.5, -0.5), (+0.5, +0.5)
+]
+
 action = [0, 0]
 
 class RayCastClosestCallback(b2RayCastCallback):
@@ -93,7 +98,7 @@ class ContactDetector(b2ContactListener):
             if self.env.reach_area == contact.fixtureA.body or self.env.reach_area == contact.fixtureB.body:
                 self.env.game_over = True
             elif self.env.ground == contact.fixtureA.body or self.env.ground == contact.fixtureB.body:
-                self.env.barrier_contect = True
+                self.env.ground_contect = True
 
     def EndContact(self, contact):
         if self.env.ship in [contact.fixtureA.body, contact.fixtureB.body]:
@@ -127,7 +132,8 @@ class RoutePlan(gym.Env, EzPickle):
 
         # game状态记录
         self.game_over = None
-        self.barrier_contect = None
+        self.ground_contect = None
+        self.dist_record = None
         self.draw_list = None
         self.heat_map = None
         self.dist_norm = 14.38
@@ -161,7 +167,8 @@ class RoutePlan(gym.Env, EzPickle):
         self.world.contactListener_keepref = ContactDetector(self)
         self.world.contactListener = self.world.contactListener_keepref
         self.game_over = False
-        self.barrier_contect = False
+        self.ground_contect = False
+        self.dist_record = None
 
         W = VIEWPORT_W / SCALE
         H = VIEWPORT_H / SCALE
@@ -233,7 +240,7 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=2,
+            linearDamping=3.5,
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
@@ -254,7 +261,7 @@ class RoutePlan(gym.Env, EzPickle):
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
         circle_shape = b2CircleShape(radius=1)
-        self.reach_area = self.world.CreateStaticBody(position=(shift_x[index[-1] // CHUNKS, index[-1] % CHUNKS], shift_y[index[-1] // CHUNKS, index[-1] % CHUNKS]),
+        self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
                                                       ))
@@ -363,43 +370,55 @@ class RoutePlan(gym.Env, EzPickle):
         vel_ang = self.ship.angularVelocity
 
         # 状态值归一化
+        # state = [
+        #     (pos.x - self.reach_area.position.x)/8,
+        #     (pos.y - self.reach_area.position.y)/16,
+        #     vel_scalar,
+        #     end_ori/b2_pi,
+        #     end_info.distance/self.dist_norm,
+        #     [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
+        # ]
+        # assert len(state) == 6
         state = [
-            (pos.x - self.reach_area.position.x)/8,
-            (pos.y - self.reach_area.position.y)/16,
+            end_info.distance,
             vel_scalar,
-            end_ori/b2_pi,
-            end_info.distance/self.dist_norm,
-            [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
+            end_ori/b2_pi
         ]
-        assert len(state) == 6
+        assert len(state) == 3
 
         """Reward 计算"""
         done = False
 
         # ship投影方向速度reward计算
-        if vel_scalar > 3:
-            reward_vel = -1
-        elif vel_scalar < 0:
-            reward_vel = -4
+        # if vel_scalar > 3.5:
+        #     reward_vel = -5
+        # elif vel_scalar < 0.5:
+        #     reward_vel = -5
+        # else:
+        #     reward_vel = 0
+
+        if self.dist_record is not None and self.dist_record > end_info.distance:
+            reward_dist = -3
         else:
-            reward_vel = 0
+            reward_dist = 0
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
         # print(f'reward_heat:{reward_shaping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
                 reward = 200
-
-            elif self.barrier_contect:
-                reward = -200
+                done = True
+            elif self.ground_contect:
+                reward = -500
+                done = True
             else:
-                reward = -10
-            done = True
+                reward = -20
 
+        self.dist_record = end_info.distance
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
         return np.hstack(state), reward, done, {}

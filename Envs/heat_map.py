@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import Box2D
-from Box2D import (b2CircleShape, b2EdgeShape)
+from Box2D import (b2CircleShape, b2EdgeShape, b2PolygonShape)
 
 ORG_SCALE = 16
 REMAP_SACLE = 40
@@ -157,10 +157,10 @@ class HeatMap:
             for col_offset in range(self.size[1]):
                 dist = get_dist(reachinfo['position'], (row_offset, col_offset))
                 if dist <= reachinfo['radius']:
-                    _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(reachinfo['radius']*0.2))
+                    _mat[row_offset, col_offset] = self.reach_reward * (8 - math.log(reachinfo['radius']*0.2))
                     continue
                 else:
-                    _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(dist - reachinfo['radius']*0.8))
+                    _mat[row_offset, col_offset] = self.reach_reward * (8 - math.log(dist - reachinfo['radius']*0.8))
         return normalize(_mat)
 
 
