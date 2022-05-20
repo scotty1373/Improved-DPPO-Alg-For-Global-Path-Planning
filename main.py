@@ -52,6 +52,9 @@ def parse_args():
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
                         default=False)
+    parser.add_argument('--device',
+                        help='data device',
+                        default='cpu')
     args = parser.parse_args()
     return args
 
@@ -70,11 +73,13 @@ def main(args):
     env.unwrapped
     assert isinstance(args.batch_size, int)
     # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
-    seed_torch(seed=2138903)
+    seed_torch(seed=25535)
+    device = torch.device('cuda')
     agent = PPO(state_dim=args.frame_overlay * args.state_length,
                 action_dim=2,
                 batch_size=args.batch_size,
-                overlay=args.frame_overlay)
+                overlay=args.frame_overlay,
+                device=device)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)
@@ -147,8 +152,8 @@ def main(args):
 
                         # 计算gae advantage
                         with torch.no_grad():
-                            last_frame_pixel = torch.Tensor(pixel_obs_t1)
-                            last_frame_vect = torch.Tensor(obs_t1)
+                            last_frame_pixel = torch.Tensor(pixel_obs_t1).to(device)
+                            last_frame_vect = torch.Tensor(obs_t1).to(device)
                             last_val = agent.v(last_frame_pixel, last_frame_vect)
                         # 策略网络价值网络更新
                         agent.update(pixel_state, vect_state, action, logprob_nstep, discount_reward, reward_nstep, last_val, done)

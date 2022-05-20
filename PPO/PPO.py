@@ -17,14 +17,15 @@ torch.autograd.set_detect_anomaly(True)
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, batch_size, overlay):
+    def __init__(self, state_dim, action_dim, batch_size, overlay, device):
         self.action_dim = action_dim
         self.state_dim = state_dim
         self.batch_size = batch_size
         self.frame_overlay = overlay
+        self.device = device
 
         # model build
-        self._init(self.state_dim, self.action_dim, self.batch_size, self.frame_overlay)
+        self._init(self.state_dim, self.action_dim, self.batch_size, self.frame_overlay, self.device)
 
         # optimizer initialize
         self.lr_actor = LEARNING_RATE_ACTOR
@@ -47,20 +48,20 @@ class PPO:
         self.t = 0
         self.ep = 0
 
-    def _init(self, state_dim, action_dim, train_batch, overlay):
-        self.pi = ActorModel(state_dim, action_dim, overlay)
-        self.v = CriticModel(state_dim, action_dim, overlay)
+    def _init(self, state_dim, action_dim, train_batch, overlay, device):
+        self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
+        self.v = CriticModel(state_dim, action_dim, overlay).to(device)
         self.memory = deque(maxlen=train_batch*2)
 
     def get_action(self, obs_):
-        pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(obs_[0])), torch.Tensor(copy.deepcopy(obs_[1]))
+        pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(obs_[0])).to(self.device), torch.Tensor(copy.deepcopy(obs_[1])).to(self.device)
 
         self.pi.eval()
         with torch.no_grad():
             action, action_logprob, dist = self.pi(pixel_obs_, obs_)
         self.pi.train()
 
-        return action.cpu().detach().numpy(), action_logprob.detach().numpy(), dist
+        return action.cpu().detach().numpy(), action_logprob.cpu().detach().numpy(), dist
 
     def state_store_memory(self, pixel_s, s, act, r, logprob):
         self.memory.append((pixel_s, s, act, r, logprob))
@@ -69,9 +70,9 @@ class PPO:
     def decayed_reward(self, singal_state_frame, reward_):
         decayed_rd = []
         with torch.no_grad():
-            state_frame_pixel = torch.Tensor(singal_state_frame[0])
-            state_frame_vect = torch.Tensor(singal_state_frame[1])
-            value_target = self.v(state_frame_pixel, state_frame_vect).detach().numpy()
+            state_frame_pixel = torch.Tensor(singal_state_frame[0]).to(self.device)
+            state_frame_vect = torch.Tensor(singal_state_frame[1]).to(self.device)
+            value_target = self.v(state_frame_pixel, state_frame_vect).cpu().detach().numpy()
             for rd_ in reward_[::-1]:
                 value_target = rd_ + value_target * self.decay_index
                 decayed_rd.append(value_target)
@@ -81,7 +82,7 @@ class PPO:
     # 计算actor更新用的advantage value
     def advantage_calcu(self, decay_reward, state_t):
         with torch.no_grad():
-            state_t = torch.Tensor(state_t)
+            state_t = torch.Tensor(state_t).to(self.device)
             critic_value_ = self.v(state_t)
             d_reward = torch.Tensor(decay_reward)
             advantage = d_reward - critic_value_
@@ -92,16 +93,15 @@ class PPO:
 
     def gae_adv(self, state_pixel, state_vect, reward_step, last_val):
         with torch.no_grad():
-            state_frame_pixel = torch.Tensor(state_pixel)
-            state_frame_vect = torch.Tensor(state_vect)
-            critic_value_ = self.v(state_frame_pixel, state_frame_vect).detach()
+            critic_value_ = self.v(state_pixel, state_vect)
             batch_size = critic_value_.shape[0]
             critic_value_ = torch.cat([critic_value_, last_val.reshape(-1, 1)], dim=0)
 
             assert reward_step.shape == critic_value_.shape
             td_error = reward_step[:-1, ...] + self.decay_index * critic_value_[1:, ...] - critic_value_[:-1, ...]
+            td_error = td_error.cpu().numpy()
 
-            gae_advantage = signal.lfilter([1], [1, -self.decay_index*self.lamda], td_error.numpy()[::-1, ...], axis=0)[::-1, ...]
+            gae_advantage = signal.lfilter([1], [1, -self.decay_index*self.lamda], td_error[::-1, ...], axis=0)[::-1, ...]
 
             # for idx, td in enumerate(td_error.numpy()[::-1]):
             #     temp = 0
@@ -109,13 +109,13 @@ class PPO:
             #         temp += gae_advantage[adv_idx, 0] * ((self.lamda*self.epilson)**weight)
             #     gae_advantage[idx, ...] = td + temp
             """！！！以下代码结构需做优化！！！"""
-            gae_advantage = torch.Tensor(gae_advantage.copy())
+            gae_advantage = torch.Tensor(gae_advantage.copy()).to(self.device)
         # gae_advantage = (gae_advantage - gae_advantage.mean()) / (gae_advantage.std() + 1e-8)
         return gae_advantage
 
     # 计算critic更新用的 Q(s, a)和 V(s)
     def critic_update(self, pixel_state, vect_state, d_reward_):
-        q_value = torch.Tensor(d_reward_).squeeze(-1)
+        q_value = torch.Tensor(d_reward_).squeeze(-1).to(self.device)
         q_value = q_value[..., None]
 
         target_value = self.v(pixel_state, vect_state).squeeze(-1)
@@ -129,8 +129,8 @@ class PPO:
         self.c_opt.step()
 
     def actor_update(self, pixel_state, vect_state, action, logprob_old, advantage):
-        action = torch.FloatTensor(action)
-        logprob_old = torch.FloatTensor(logprob_old)
+        action = torch.FloatTensor(action).to(self.device)
+        logprob_old = torch.FloatTensor(logprob_old).to(self.device)
 
         _, _, pi_dist = self.pi(pixel_state, vect_state)
         logprob = pi_dist.log_prob(action)
@@ -161,14 +161,14 @@ class PPO:
         self.history_actor = actor_loss.detach().item()
 
     def update(self, pixel_state, vect_state, action, logprob, discount_reward_, reward_nstep, last_val, done):
-        pixel_state = torch.Tensor(pixel_state)
-        vect_state = torch.Tensor(vect_state)
+        pixel_state = torch.Tensor(pixel_state).to(self.device)
+        vect_state = torch.Tensor(vect_state).to(self.device)
         act = action
         reward_nstep = reward_nstep.reshape(-1, 1)
         if done:
-            last_val = torch.zeros((1, 1))
+            last_val = torch.zeros((1, 1)).to(self.device)
         try:
-            reward = torch.FloatTensor(reward_nstep)
+            reward = torch.FloatTensor(reward_nstep).to(self.device)
             reward = torch.cat((reward, last_val), dim=0)
         except TypeError as e:
             print('reward error')

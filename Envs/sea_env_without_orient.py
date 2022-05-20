@@ -260,7 +260,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 设置抵达点位置
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=1)
+        circle_shape = b2CircleShape(radius=0.75)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape

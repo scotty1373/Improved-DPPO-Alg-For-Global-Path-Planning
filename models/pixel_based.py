@@ -15,20 +15,20 @@ class ActorModel(nn.Module):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.frame_overlay = frame_overlay
-        self.conv1 = nn.Conv2d(in_channels=self.frame_overlay, out_channels=16,
-                               kernel_size=(8, 8), stride=(4, 4))
+        self.conv1 = nn.Conv2d(in_channels=self.frame_overlay, out_channels=32,
+                               kernel_size=(8, 8), stride=(2, 2))
         self.actv1 = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32,
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64,
                                kernel_size=(4, 4), stride=(2, 2))
         self.actv2 = nn.ReLU(inplace=True)
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64,
-                               kernel_size=(3, 3), stride=(1, 1),
-                               padding=(1, 1))
-        self.actv3 = nn.ReLU(inplace=True)
-        self.conv4 = nn.Conv2d(in_channels=64, out_channels=128,
-                               kernel_size=(3, 3), stride=(1, 1),
-                               padding=(1, 1))
-        self.actv4 = nn.ReLU(inplace=True)
+        # self.conv3 = nn.Conv2d(in_channels=32, out_channels=64,
+        #                        kernel_size=(3, 3), stride=(1, 1),
+        #                        padding=(1, 1))
+        # self.actv3 = nn.ReLU(inplace=True)
+        # self.conv4 = nn.Conv2d(in_channels=64, out_channels=128,
+        #                        kernel_size=(3, 3), stride=(1, 1),
+        #                        padding=(1, 1))
+        # self.actv4 = nn.ReLU(inplace=True)
 
         self.fc_state = nn.Sequential(
             nn.Linear(self.state_dim, 100),
@@ -51,13 +51,15 @@ class ActorModel(nn.Module):
         self.log_std2 = nn.Linear(300, self.action_dim)
         nn.init.normal_(self.log_std1.weight, 0, 3e-4)
 
+        # extractor = [self.conv1, self.actv1,
+        #              self.conv2, self.actv2,
+        #              self.conv3, self.actv3,
+        #              self.conv4, self.actv4]
         extractor = [self.conv1, self.actv1,
-                     self.conv2, self.actv2,
-                     self.conv3, self.actv3,
-                     self.conv4, self.actv4]
+                     self.conv2, self.actv2]
         self.extractor = nn.Sequential(*extractor)
 
-        layer = [nn.Linear(in_features=8192, out_features=512),
+        layer = [nn.Linear(in_features=18496, out_features=512),
                  nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
 
@@ -90,7 +92,7 @@ class ActorModel(nn.Module):
         action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
         action_logprob = dist.log_prob(action_sample)
 
-        return action_sample, action_logprob, dist
+        return action_sample, action_logprob
 
 
 class CriticModel(nn.Module):
@@ -158,13 +160,13 @@ def uniform_init(layer, *, a=-3e-3, b=3e-3):
 
 
 if __name__ == '__main__':
-    model = ActorModel(48, 2)
-    model_critic = CriticModel(0, 2)
+    model = ActorModel(2*3, 2, frame_overlay=3)
+    model_critic = CriticModel(2, 2, frame_overlay=3)
     x = torch.randn((10, 3, 80, 80))
-    x_vect = torch.rand((10, 48))
+    x_vect = torch.rand((10, 2*3))
     out = model(x, x_vect)
-    out_critic = model_critic(x)
     from torch.utils.tensorboard import SummaryWriter
     logger = SummaryWriter(log_dir='./', flush_secs=100)
     logger.add_graph(model, (x, x_vect))
-    out.shape
+    out_critic = model_critic(x)
+
