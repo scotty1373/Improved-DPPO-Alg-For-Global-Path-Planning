@@ -92,7 +92,7 @@ class ActorModel(nn.Module):
         action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
         action_logprob = dist.log_prob(action_sample)
 
-        return action_sample, action_logprob
+        return action_sample, action_logprob, dist
 
 
 class CriticModel(nn.Module):

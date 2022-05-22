@@ -8,6 +8,7 @@ from utils_tools.common import log2json, dirs_creat, TIMESTAMP, seed_torch
 from torch.utils.tensorboard import SummaryWriter
 from utils_tools.utils import state_frame_overlay, pixel_based, img_proc
 import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw
 import seaborn as sns
 from tqdm import tqdm
 import torch
@@ -15,6 +16,7 @@ import argparse
 
 TIME_BOUNDARY = 500
 IMG_SIZE = (80, 80)
+IMG_SIZE_RENDEER = 480
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -58,6 +60,10 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
+    remap_vect = np.array((vect[0] * ratio + (IMG_SIZE_RENDEER / 2), (-vect[1] * ratio) + IMG_SIZE_RENDEER), dtype=np.uint16)
+    return remap_vect
+
 
 def main(args):
     args = args
@@ -99,12 +105,20 @@ def main(args):
             agent.load_model(checkpoint)
 
     ep_history = []
+    """agent探索轨迹追踪"""
+    env.reset()
+    trace_image = env.render(mode='rgb_array')
+    trace_image = Image.fromarray(trace_image)
+    trace_path = ImageDraw.Draw(trace_image)
+
     epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')
 
     for epoch in epochs:
         reward_history = 0
         entropy_acc_history = 0
         entropy_ori_history = 0
+        """轨迹记录"""
+        trace_history = []
         obs, _, done, _ = env.reset()
         # obs = np.stack((obs, obs, obs), axis=0).reshape(-1)
         '''利用广播机制初始化state帧叠加结构，不使用stack重复对数组进行操作'''
@@ -198,8 +212,13 @@ def main(args):
             else:
                 env.step(np.zeros(2,), t)
 
+            trace_history.append(tuple(trace_trans(env.ship.position)))
+
             if (t + 1) % (args.max_timestep * args.frame_skipping) == 0:
                 break
+
+        # 单幕结束显示轨迹
+        trace_path.line(trace_history)
 
         # lr_Scheduler
         agent.a_sch.step()
@@ -229,6 +248,7 @@ def main(args):
         tb_logger.add_scalar(tag='Loss/ep_entropy_ori',
                              scalar_value=log_ep_text["entropy_ori_mean"],
                              global_step=epoch)
+        tb_logger.add_image(tag='')
 
     agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
     env.close()
