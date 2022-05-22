@@ -60,6 +60,7 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+
 def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
     remap_vect = np.array((vect[0] * ratio + (IMG_SIZE_RENDEER / 2), (-vect[1] * ratio) + IMG_SIZE_RENDEER), dtype=np.uint16)
     return remap_vect
@@ -218,7 +219,7 @@ def main(args):
                 break
 
         # 单幕结束显示轨迹
-        trace_path.line(trace_history)
+        trace_path.line(trace_history, width=1, fill='black')
 
         # lr_Scheduler
         agent.a_sch.step()
@@ -248,7 +249,10 @@ def main(args):
         tb_logger.add_scalar(tag='Loss/ep_entropy_ori',
                              scalar_value=log_ep_text["entropy_ori_mean"],
                              global_step=epoch)
-        tb_logger.add_image(tag='')
+        tb_logger.add_image('Image/Trace',
+                            np.array(trace_image),
+                            global_step=epoch,
+                            dataformats='HWC')
 
     agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
     env.close()
