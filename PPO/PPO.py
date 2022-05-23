@@ -147,9 +147,6 @@ class PPO:
         surrogate2_acc = torch.clamp(ratio, 1-self.epilson, 1+self.epilson) * advantage
 
         actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
-        # actor_loss_index = torch.min(abs(torch.cat((surrogate1_acc, surrogate2_acc), dim=1)), dim=1)[1].reshape(-1, 1)
-        # actor_loss = torch.cat((surrogate1_acc, surrogate2_acc), dim=1)
-        # actor_loss = torch.gather(actor_loss, dim=1, index=actor_loss_index)
 
         self.a_opt.zero_grad()
         actor_loss = -torch.mean(actor_loss)
