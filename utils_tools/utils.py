@@ -40,4 +40,21 @@ def img_proc(img, resize=(80, 80)):
     return img.copy()
 
 
+def record(global_ep, global_ep_r, ep_r, res_queue, worker_ep, name, idx):
+    with global_ep.get_lock():
+        global_ep.value += 1
+    with global_ep_r.get_lock():
+        if global_ep_r.value == 0.:
+            global_ep_r.value = ep_r
+        else:
+            global_ep_r.value = global_ep_r.value * 0.99 + ep_r * 0.01
+    res_queue.put([idx, ep_r])
+
+    print(f'{name}, '
+          f'Global_EP: {global_ep.value}, '
+          f'worker_EP: {worker_ep}, '
+          f'EP_r: {global_ep_r.value}, '
+          f'reward_ep: {ep_r}')
+
+
 
