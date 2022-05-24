@@ -80,7 +80,7 @@ def main(args):
     env.unwrapped
     assert isinstance(args.batch_size, int)
     # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
-    seed_torch(seed=25535)
+    seed_torch(seed=25532)
     device = torch.device('cuda')
     agent = PPO(state_dim=args.frame_overlay * args.state_length,
                 action_dim=2,
@@ -150,28 +150,13 @@ def main(args):
                     reward = -10
 
                 if not args.pre_train:
-
                     # 状态存储
                     agent.state_store_memory(pixel_obs, obs, act, reward, logprob)
 
                     if t % (args.frame_skipping*agent.batch_size) == 0 or (done and t % (agent.batch_size*args.frame_skipping) > 5):
-                        pixel_state, vect_state, action, reward_nstep, logprob_nstep = zip(*agent.memory)
-
-                        pixel_state = np.concatenate(pixel_state, axis=0)
-                        vect_state = np.concatenate(vect_state, axis=0)
-                        action = np.concatenate(action, axis=0)
-                        reward_nstep = np.stack(reward_nstep, axis=0)
-                        logprob_nstep = np.concatenate(logprob_nstep, axis=0)
-                        # 动作价值计算
-                        discount_reward = agent.decayed_reward((pixel_obs_t1, obs_t1), reward_nstep)
-
-                        # 计算gae advantage
-                        with torch.no_grad():
-                            last_frame_pixel = torch.Tensor(pixel_obs_t1).to(device)
-                            last_frame_vect = torch.Tensor(obs_t1).to(device)
-                            last_val = agent.v(last_frame_pixel, last_frame_vect)
+                        pixel_state, vect_state, action, logprob, d_reward, adv = agent.get_trjt(pixel_obs_t1, obs_t1, done)
                         # 策略网络价值网络更新
-                        agent.update(pixel_state, vect_state, action, logprob_nstep, discount_reward, reward_nstep, last_val, done)
+                        agent.update(pixel_state, vect_state, action, logprob, d_reward, adv)
                         # 清空存储池
                         agent.memory.clear()
                 entropy_temp = dist.entropy().cpu().numpy().squeeze()

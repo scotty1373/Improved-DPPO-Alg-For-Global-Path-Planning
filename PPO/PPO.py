@@ -9,9 +9,9 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-4
-LEARNING_RATE_CRITIC = 3e-4
-DECAY = 0.98
+LEARNING_RATE_ACTOR = 0.5e-4
+LEARNING_RATE_CRITIC = 2e-4
+DECAY = 0.9
 EPILSON = 0.2
 torch.autograd.set_detect_anomaly(True)
 
@@ -94,7 +94,6 @@ class PPO:
     def gae_adv(self, state_pixel, state_vect, reward_step, last_val):
         with torch.no_grad():
             critic_value_ = self.v(state_pixel, state_vect)
-            batch_size = critic_value_.shape[0]
             critic_value_ = torch.cat([critic_value_, last_val.reshape(-1, 1)], dim=0)
 
             assert reward_step.shape == critic_value_.shape
@@ -125,17 +124,16 @@ class PPO:
         self.history_critic = critic_loss.detach().item()
         self.c_opt.zero_grad()
         critic_loss.backward(retain_graph=True)
-        # torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=0.5, norm_type=2)
+        torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=2000, norm_type=2)
         self.c_opt.step()
 
     def actor_update(self, pixel_state, vect_state, action, logprob_old, advantage):
-        action = torch.FloatTensor(action).to(self.device)
-        logprob_old = torch.FloatTensor(logprob_old).to(self.device)
-
         _, _, pi_dist = self.pi(pixel_state, vect_state)
         logprob = pi_dist.log_prob(action)
 
         pi_entropy = pi_dist.entropy().mean(dim=1).detach()
+
+        """是否需要增加kl散度监视？？？"""
 
         assert logprob.shape == logprob_old.shape
         ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
@@ -152,15 +150,30 @@ class PPO:
         actor_loss = -torch.mean(actor_loss)
 
         actor_loss.backward(retain_graph=True)
-        # torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=1)
+        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
 
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
 
-    def update(self, pixel_state, vect_state, action, logprob, discount_reward_, reward_nstep, last_val, done):
+    # 用于获取单幕中用于更新actor和critic的advantage和reward_sum
+    def get_trjt(self, last_pixel, last_vect, done):
+        pixel_state, vect_state, action, reward_nstep, logprob_nstep = zip(*self.memory)
+        pixel_state = np.concatenate(pixel_state, axis=0)
+        vect_state = np.concatenate(vect_state, axis=0)
+        action = np.concatenate(action, axis=0)
+        reward_nstep = np.stack(reward_nstep, axis=0)
+        logprob_nstep = np.concatenate(logprob_nstep, axis=0)
+        # 动作价值计算
+        discount_reward = self.decayed_reward((last_pixel, last_vect), reward_nstep)
+        with torch.no_grad():
+            last_frame_pixel = torch.Tensor(last_pixel).to(self.device)
+            last_frame_vect = torch.Tensor(last_vect).to(self.device)
+            last_val = self.v(last_frame_pixel, last_frame_vect)
+
         pixel_state = torch.Tensor(pixel_state).to(self.device)
         vect_state = torch.Tensor(vect_state).to(self.device)
-        act = action
+        action = torch.FloatTensor(action).to(self.device)
+        logprob_nstep = torch.FloatTensor(logprob_nstep).to(self.device)
         reward_nstep = reward_nstep.reshape(-1, 1)
         if done:
             last_val = torch.zeros((1, 1)).to(self.device)
@@ -171,13 +184,14 @@ class PPO:
             print('reward error')
 
         # 用于计算critic损失/原始advantage
-        d_reward = np.concatenate(discount_reward_).reshape(-1, 1)
+        d_reward = np.concatenate(discount_reward).reshape(-1, 1)
 
-        # adv = self.advantage_calcu(d_reward, state_)
         adv = self.gae_adv(pixel_state, vect_state, reward, last_val)
+        return pixel_state, vect_state, action, logprob_nstep, d_reward, adv
 
+    def update(self, pixel_state, vect_state, action, logprob, d_reward, adv):
         for i in range(self.update_actor_epoch):
-            self.actor_update(pixel_state, vect_state, act, logprob, adv)
+            self.actor_update(pixel_state, vect_state, action, logprob, adv)
             # print(f'epochs: {self.ep}, time_steps: {self.t}, actor_loss: {self.history_actor}')
 
         for i in range(self.update_critic_epoch):

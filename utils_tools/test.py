@@ -17,19 +17,20 @@ class worker(mp.Process):
         self.pipe = pipe
 
     def run(self):
-        pixel_state = torch.randn((16, 3, 80, 80))
-        vect_state = torch.randn((16, 3 * 2))
+        for i in range(10):
+            pixel_state = torch.randn((16, 3, 80, 80))
+            vect_state = torch.randn((16, 3 * 2))
 
-        temp_pixel = self.share['pixel']
-        temp_pixel.append(pixel_state)
+            temp_pixel = self.share['pixel']
+            temp_pixel.append(pixel_state)
 
-        temp_vect = self.share['vect']
-        temp_vect.append(vect_state)
+            temp_vect = self.share['vect']
+            temp_vect.append(vect_state)
 
-        self.share.update({'pixel': temp_pixel, 'vect': temp_vect})
+            self.share.update({'pixel': temp_pixel, 'vect': temp_vect})
 
-        self.pipe.send((temp_pixel, temp_vect))
-        self.pipe.close()
+            self.pipe.send((pixel_state, vect_state))
+        # self.pipe.close()
 
 
 class buffer:
@@ -59,11 +60,13 @@ if __name__ == '__main__':
     pipe_r, pipe_w = zip(*[mp.Pipe() for _ in range(3)])
 
     worker_list = [worker(i, data_share, pipe_r[i]) for i in range(3)]
-    data = []
-
+    data = [[] for _ in range(3)]
     [w.start() for w in worker_list]
+
     for i in range(3):
-        data.append(pipe_w[i].recv())
+        for j in range(10):
+            data[i].append(pipe_w[i].recv())
+
     time.time()
 
 

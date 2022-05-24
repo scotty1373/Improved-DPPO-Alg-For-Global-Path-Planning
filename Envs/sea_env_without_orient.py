@@ -397,10 +397,11 @@ class RoutePlan(gym.Env, EzPickle):
         # else:
         #     reward_vel = 0
 
-        if self.dist_record is not None and self.dist_record > end_info.distance:
+        if self.dist_record is not None and self.dist_record <= end_info.distance:
             reward_dist = -3
         else:
             reward_dist = 0
+            self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
@@ -410,15 +411,14 @@ class RoutePlan(gym.Env, EzPickle):
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 200
+                reward = 100
                 done = True
             elif self.ground_contect:
-                reward = -500
+                reward = -100
                 done = True
             else:
                 reward = -20
-
-        self.dist_record = end_info.distance
+                done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
         return np.hstack(state), reward, done, {}

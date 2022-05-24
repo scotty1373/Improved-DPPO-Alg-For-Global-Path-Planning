@@ -86,7 +86,7 @@ class ActorModel(nn.Module):
         action_std = self.log_std2(action_std)
         action_std = nn.functional.softplus(action_std)
 
-        dist = Normal(action_mean, action_std + 1e-8)
+        dist = Normal(action_mean, action_std + 1e-4)
         action_sample = dist.sample()
         action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
         action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
@@ -152,6 +152,7 @@ def layer_init(layer, *, mean=0, std=0.1):
     nn.init.normal_(layer.weight, mean=mean, std=std)
     nn.init.constant_(layer.bias, 0)
     return layer
+
 
 def uniform_init(layer, *, a=-3e-3, b=3e-3):
     nn.init.uniform_(layer.weight, a, b)
