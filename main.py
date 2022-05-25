@@ -82,11 +82,6 @@ def main(args):
     # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
     seed_torch(seed=25532)
     device = torch.device('cuda')
-    agent = PPO(state_dim=args.frame_overlay * args.state_length,
-                action_dim=2,
-                batch_size=args.batch_size,
-                overlay=args.frame_overlay,
-                device=device)
 
     # Iter log初始化
     logger_iter = log2json(filename='train_log_iter', type_json=True)
@@ -98,6 +93,13 @@ def main(args):
     sns.heatmap(env.heat_map, ax=ax1)
     fig.suptitle('reward shaping heatmap')
     tb_logger.add_figure('figure', fig)
+
+    agent = PPO(state_dim=args.frame_overlay * args.state_length,
+                action_dim=2,
+                batch_size=args.batch_size,
+                overlay=args.frame_overlay,
+                device=device,
+                logger=tb_logger)
 
     # 是否从预训练结果中载入ckpt
     if args.pre_train:
@@ -225,13 +227,13 @@ def main(args):
         logger_ep.write2json(log_ep_text)
 
         # tensorboard logger
-        tb_logger.add_scalar(tag='Loss/ep_reward',
+        tb_logger.add_scalar(tag='Reward/ep_reward',
                              scalar_value=reward_history,
                              global_step=epoch)
-        tb_logger.add_scalar(tag='Loss/ep_entropy_acc',
+        tb_logger.add_scalar(tag='Reward/ep_entropy_acc',
                              scalar_value=log_ep_text["entropy_acc_mean"],
                              global_step=epoch)
-        tb_logger.add_scalar(tag='Loss/ep_entropy_ori',
+        tb_logger.add_scalar(tag='Reward/ep_entropy_ori',
                              scalar_value=log_ep_text["entropy_ori_mean"],
                              global_step=epoch)
         tb_logger.add_image('Image/Trace',

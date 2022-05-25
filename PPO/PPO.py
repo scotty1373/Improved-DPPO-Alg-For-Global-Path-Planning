@@ -9,7 +9,7 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 0.5e-4
+LEARNING_RATE_ACTOR = 1e-4
 LEARNING_RATE_CRITIC = 2e-4
 DECAY = 0.9
 EPILSON = 0.2
@@ -17,12 +17,13 @@ torch.autograd.set_detect_anomaly(True)
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, batch_size, overlay, device):
+    def __init__(self, state_dim, action_dim, batch_size, overlay, device, logger):
         self.action_dim = action_dim
         self.state_dim = state_dim
         self.batch_size = batch_size
         self.frame_overlay = overlay
         self.device = device
+        self.logger = logger
 
         # model build
         self._init(self.state_dim, self.action_dim, self.batch_size, self.frame_overlay, self.device)
@@ -124,7 +125,7 @@ class PPO:
         self.history_critic = critic_loss.detach().item()
         self.c_opt.zero_grad()
         critic_loss.backward(retain_graph=True)
-        torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=2000, norm_type=2)
+        torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=1000, norm_type=2)
         self.c_opt.step()
 
     def actor_update(self, pixel_state, vect_state, action, logprob_old, advantage):
@@ -150,7 +151,7 @@ class PPO:
         actor_loss = -torch.mean(actor_loss)
 
         actor_loss.backward(retain_graph=True)
-        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
+        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=20, norm_type=2)
 
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
@@ -192,11 +193,15 @@ class PPO:
     def update(self, pixel_state, vect_state, action, logprob, d_reward, adv):
         for i in range(self.update_actor_epoch):
             self.actor_update(pixel_state, vect_state, action, logprob, adv)
-            # print(f'epochs: {self.ep}, time_steps: {self.t}, actor_loss: {self.history_actor}')
+            self.logger.add_scalar(tag='Loss/actor_loss',
+                                   scalar_value=self.history_actor,
+                                   global_step=self.t)
 
         for i in range(self.update_critic_epoch):
             self.critic_update(pixel_state, vect_state, d_reward)
-            # print(f'epochs: {self.ep}, time_steps: {self.t}, critic_loss: {self.history_critic}')
+            self.logger.add_scalar(tag='Loss/critic_loss',
+                                   scalar_value=self.history_critic,
+                                   global_step=self.t)
 
     def save_model(self, name):
         torch.save({'actor': self.pi.state_dict(),
