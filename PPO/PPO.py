@@ -9,8 +9,8 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-4
-LEARNING_RATE_CRITIC = 2e-4
+LEARNING_RATE_ACTOR = 8e-5
+LEARNING_RATE_CRITIC = 1e-4
 DECAY = 0.9
 EPILSON = 0.2
 torch.autograd.set_detect_anomaly(True)
@@ -142,6 +142,7 @@ class PPO:
         # 使shape匹配，防止元素相乘发生广播问题
         ratio = torch.unsqueeze(ratio, dim=1)
         assert ratio.shape == advantage.shape
+        advantage = (advantage - advantage.mean()) / advantage.std()
         surrogate1_acc = ratio * advantage
         surrogate2_acc = torch.clamp(ratio, 1-self.epilson, 1+self.epilson) * advantage
 
@@ -151,7 +152,7 @@ class PPO:
         actor_loss = -torch.mean(actor_loss)
 
         actor_loss.backward(retain_graph=True)
-        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=20, norm_type=2)
+        # torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
 
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()

@@ -120,7 +120,7 @@ class HeatMap:
                     if dist <= barr_list['radius'][idx_barr]:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(barr_list['radius'][idx_barr]*0.05))
                         continue
-                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 1.75:
+                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 2:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(dist - barr_list['radius'][idx_barr]*0.95))
                     else:
                         pass
