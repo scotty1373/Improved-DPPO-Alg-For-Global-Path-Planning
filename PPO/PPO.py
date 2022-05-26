@@ -2,6 +2,7 @@ import numpy
 import torch
 from models.pixel_based import ActorModel, CriticModel
 from torch.distributions import Normal
+import gym
 from collections import deque
 from skimage.color import rgb2gray
 from scipy import signal
@@ -13,8 +14,57 @@ LEARNING_RATE_ACTOR = 8e-5
 LEARNING_RATE_CRITIC = 1e-4
 DECAY = 0.9
 EPILSON = 0.2
+max_timestep = 512
 torch.autograd.set_detect_anomaly(True)
 
+
+class PPO_Buffer:
+    def __init__(self):
+        self.pixel_state = []
+        self.vect_state = []
+        self.action = []
+        self.logprob = []
+        self.d_reward = []
+        self.adv = []
+
+    def collect_traj(self, pixel, vect, act, logp, d_reward, adv):
+        self.pixel_state.append(pixel)
+        self.vect_state.append(vect)
+        self.action.append(act)
+        self.logprob.append(logp)
+        self.d_reward.append(d_reward)
+        self.adv.append(adv)
+
+    def get_data(self):
+        self.pixel_state = torch.cat(self.pixel_state, dim=0)
+        self.vect_state = torch.cat(self.vect_state, dim=0)
+        self.action = torch.cat(self.action, dim=0)
+        self.logprob = torch.cat(self.logprob, dim=0)
+        self.d_reward = torch.cat(self.d_reward, dim=0)
+        self.adv = torch.cat(self.adv, dim=0)
+
+
+class SkipEnvFrame(gym.Wrapper):
+    def __init__(self, env, skip=3):
+        """Return only every `skip`-th frame"""
+        super(SkipEnvFrame, self).__init__(env)
+        self._skip = skip
+
+    def step(self, action):
+        """Repeat action, sum reward, and max over last observations."""
+        total_reward = 0.0
+        done = None
+        for i in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            pixel = self.env.render()
+            total_reward += reward
+            if done:
+                break
+
+        return pixel, obs, total_reward, done, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
 
 class PPO:
     def __init__(self, state_dim, action_dim, batch_size, overlay, device, logger):
@@ -52,7 +102,7 @@ class PPO:
     def _init(self, state_dim, action_dim, train_batch, overlay, device):
         self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
         self.v = CriticModel(state_dim, action_dim, overlay).to(device)
-        self.memory = deque(maxlen=train_batch*2)
+        self.memory = deque(maxlen=max_timestep)
 
     def get_action(self, obs_):
         pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(obs_[0])).to(self.device), torch.Tensor(copy.deepcopy(obs_[1])).to(self.device)
@@ -115,7 +165,7 @@ class PPO:
 
     # 计算critic更新用的 Q(s, a)和 V(s)
     def critic_update(self, pixel_state, vect_state, d_reward_):
-        q_value = torch.Tensor(d_reward_).squeeze(-1).to(self.device)
+        q_value = d_reward_.squeeze(-1).to(self.device)
         q_value = q_value[..., None]
 
         target_value = self.v(pixel_state, vect_state).squeeze(-1)
@@ -186,20 +236,27 @@ class PPO:
             print('reward error')
 
         # 用于计算critic损失/原始advantage
-        d_reward = np.concatenate(discount_reward).reshape(-1, 1)
+        d_reward = torch.Tensor(np.concatenate(discount_reward).reshape(-1, 1)).to(self.device)
 
         adv = self.gae_adv(pixel_state, vect_state, reward, last_val)
         return pixel_state, vect_state, action, logprob_nstep, d_reward, adv
 
-    def update(self, pixel_state, vect_state, action, logprob, d_reward, adv):
-        for i in range(self.update_actor_epoch):
-            self.actor_update(pixel_state, vect_state, action, logprob, adv)
+    def update(self, buffer):
+        buffer.get_data()
+        indice = torch.randperm(max_timestep)
+        for i in range(max_timestep//self.batch_size):
+            batch_index = torch.Tensor(indice[i*self.batch_size, (i+1)*self.batch_size])
+            batch_pixel = torch.gather(buffer.pixel_buffer, dim=0, index=batch_index)
+            batch_vect = torch.gather(buffer.vect_buffer, dim=0, index=batch_index)
+            batch_action = torch.gather(buffer.action, dim=0, index=batch_index)
+            batch_d_reward = torch.gather(buffer.d_reward, dim=0, index=batch_index)
+            batch_logprob = torch.gather(buffer.logprob, dim=0, index=batch_index)
+            batch_adv = torch.gather(buffer.adv, dim=0, index=batch_index)
+            self.actor_update(batch_pixel, batch_vect, batch_action, batch_logprob, batch_adv)
+            self.critic_update(batch_pixel, batch_vect, batch_d_reward)
             self.logger.add_scalar(tag='Loss/actor_loss',
                                    scalar_value=self.history_actor,
                                    global_step=self.t)
-
-        for i in range(self.update_critic_epoch):
-            self.critic_update(pixel_state, vect_state, d_reward)
             self.logger.add_scalar(tag='Loss/critic_loss',
                                    scalar_value=self.history_critic,
                                    global_step=self.t)

@@ -279,9 +279,9 @@ class RoutePlan(gym.Env, EzPickle):
         # fig, axes = plt.subplots(1, 1)
         # sns.heatmap(self.heat_map, annot=False, ax=axes)
         # plt.show()
-        return self.step(np.array([0, 0]), 0)
+        return self.step(np.array([0, 0]))
 
-    def step(self, action_sample: np.array, time_step):
+    def step(self, action_sample: np.array):
         action_sample = np.clip(action_sample, -1, 1).astype('float32')
 
         if not self.ship:
