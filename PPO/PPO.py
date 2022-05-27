@@ -46,12 +46,10 @@ class PPO_Buffer:
 
 class SkipEnvFrame(gym.Wrapper):
     def __init__(self, env, skip=3):
-        """Return only every `skip`-th frame"""
         super(SkipEnvFrame, self).__init__(env)
         self._skip = skip
 
     def step(self, action):
-        """Repeat action, sum reward, and max over last observations."""
         total_reward = 0.0
         done = None
         for i in range(self._skip):
@@ -202,7 +200,7 @@ class PPO:
         try:
             actor_loss.backward()
         except RuntimeError as e:
-            print('expbackward dettected!!!')
+            print('Expbackward dettected!!!')
         torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=1, norm_type=2)
 
         self.a_opt.step()

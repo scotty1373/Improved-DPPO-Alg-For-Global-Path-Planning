@@ -390,22 +390,22 @@ class RoutePlan(gym.Env, EzPickle):
         done = False
 
         # ship投影方向速度reward计算
-        # if vel_scalar > 3.5:
-        #     reward_vel = -5
-        # elif vel_scalar < 0.5:
-        #     reward_vel = -5
-        # else:
-        #     reward_vel = 0
+        if vel_scalar > 3.5:
+            reward_vel = -0.5
+        elif vel_scalar < 0.5:
+            reward_vel = -0.5
+        else:
+            reward_vel = 0
 
         if self.dist_record is not None and self.dist_record <= end_info.distance:
-            reward_dist = -3
+            reward_dist = -1
         else:
             reward_dist = 0
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist + reward_vel
         # print(f'reward_heat:{reward_shaping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
@@ -417,7 +417,7 @@ class RoutePlan(gym.Env, EzPickle):
                 reward = -100
                 done = True
             else:
-                reward = -20
+                reward = -10
                 done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
