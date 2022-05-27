@@ -125,7 +125,7 @@ def main(args):
             """轨迹记录"""
             trace_history, pixel_obs, obs, done = first_init(env, args)
 
-        step = tqdm(range(1, args.max_timestep), leave=False, position=1, colour='red')
+        step = tqdm(range(1, args.max_timestep + 1), leave=False, position=1, colour='red')
         for t in step:
             if done:
                 # 单幕结束显示轨迹

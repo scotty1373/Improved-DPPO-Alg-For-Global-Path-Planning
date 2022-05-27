@@ -10,7 +10,7 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 8e-5
+LEARNING_RATE_ACTOR = 5e-5
 LEARNING_RATE_CRITIC = 1e-4
 DECAY = 0.9
 EPILSON = 0.2
@@ -60,7 +60,6 @@ class SkipEnvFrame(gym.Wrapper):
             total_reward += reward
             if done:
                 break
-
         return pixel, obs, total_reward, done, info
 
     def reset(self, **kwargs):
@@ -174,7 +173,7 @@ class PPO:
         critic_loss = self.c_loss(target_value, q_value)
         self.history_critic = critic_loss.detach().item()
         self.c_opt.zero_grad()
-        critic_loss.backward(retain_graph=True)
+        critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=1000, norm_type=2)
         self.c_opt.step()
 
@@ -200,9 +199,11 @@ class PPO:
 
         self.a_opt.zero_grad()
         actor_loss = -torch.mean(actor_loss)
-
-        actor_loss.backward(retain_graph=True)
-        # torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=0.5, norm_type=2)
+        try:
+            actor_loss.backward()
+        except RuntimeError as e:
+            print('expbackward dettected!!!')
+        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=1, norm_type=2)
 
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
@@ -243,15 +244,18 @@ class PPO:
 
     def update(self, buffer):
         buffer.get_data()
-        indice = torch.randperm(max_timestep)
+        indice = torch.randperm(max_timestep).to(self.device)
         for i in range(max_timestep//self.batch_size):
-            batch_index = torch.Tensor(indice[i*self.batch_size, (i+1)*self.batch_size])
-            batch_pixel = torch.gather(buffer.pixel_buffer, dim=0, index=batch_index)
-            batch_vect = torch.gather(buffer.vect_buffer, dim=0, index=batch_index)
-            batch_action = torch.gather(buffer.action, dim=0, index=batch_index)
-            batch_d_reward = torch.gather(buffer.d_reward, dim=0, index=batch_index)
-            batch_logprob = torch.gather(buffer.logprob, dim=0, index=batch_index)
-            batch_adv = torch.gather(buffer.adv, dim=0, index=batch_index)
+            try:
+                batch_index = indice[i*self.batch_size:(i+1)*self.batch_size]
+                batch_pixel = torch.index_select(buffer.pixel_state, dim=0, index=batch_index)
+                batch_vect = torch.index_select(buffer.vect_state, dim=0, index=batch_index)
+                batch_action = torch.index_select(buffer.action, dim=0, index=batch_index)
+                batch_d_reward = torch.index_select(buffer.d_reward, dim=0, index=batch_index)
+                batch_logprob = torch.index_select(buffer.logprob, dim=0, index=batch_index)
+                batch_adv = torch.index_select(buffer.adv, dim=0, index=batch_index)
+            except IndexError as e:
+                print('index error')
             self.actor_update(batch_pixel, batch_vect, batch_action, batch_logprob, batch_adv)
             self.critic_update(batch_pixel, batch_vect, batch_d_reward)
             self.logger.add_scalar(tag='Loss/actor_loss',

@@ -86,7 +86,10 @@ class ActorModel(nn.Module):
         action_std = self.log_std2(action_std)
         action_std = nn.functional.softplus(action_std)
 
-        dist = Normal(action_mean, action_std + 1e-4)
+        try:
+            dist = Normal(action_mean, action_std + 1e-4)
+        except RuntimeError as e:
+            print('CUDA error')
         action_sample = dist.sample()
         action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
         action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
