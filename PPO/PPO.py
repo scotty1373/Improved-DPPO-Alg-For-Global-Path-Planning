@@ -10,9 +10,9 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 5e-5
-LEARNING_RATE_CRITIC = 1e-4
-DECAY = 0.9
+LEARNING_RATE_ACTOR = 1e-5
+LEARNING_RATE_CRITIC = 5e-5
+DECAY = 0.95
 EPILSON = 0.2
 max_timestep = 512
 torch.autograd.set_detect_anomaly(True)
@@ -53,7 +53,10 @@ class SkipEnvFrame(gym.Wrapper):
         total_reward = 0.0
         done = None
         for i in range(self._skip):
-            obs, reward, done, info = self.env.step(action)
+            if not i:
+                obs, reward, done, info = self.env.step(action)
+            else:
+                obs, reward, done, info = self.env.step(np.array((0, 0)))
             pixel = self.env.render()
             total_reward += reward
             if done:
@@ -62,6 +65,7 @@ class SkipEnvFrame(gym.Wrapper):
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
+
 
 class PPO:
     def __init__(self, state_dim, action_dim, batch_size, overlay, device, logger):
@@ -89,8 +93,6 @@ class PPO:
         self.a_sch = torch.optim.lr_scheduler.StepLR(self.a_opt, step_size=300, gamma=0.1)
 
         # training configuration
-        self.update_actor_epoch = 2
-        self.update_critic_epoch = 2
         self.history_critic = 0
         self.history_actor = 0
         self.t = 0

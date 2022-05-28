@@ -35,7 +35,7 @@ def parse_args():
                         default=512)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42)
+                        default=None)
     parser.add_argument('--batch_size',
                         help='training batch size',
                         default=16)
@@ -141,16 +141,17 @@ def main(args):
             else:
                 obs_t1 = state_frame_overlay(obs_t1, obs, args.frame_overlay)
                 pixel_obs_t1 = pixel_based(pixel_obs_t1, pixel_obs, args.frame_overlay)
-            # 达到maxstep次数之后给予惩罚
-            if t % args.max_timestep == 0:
-                done = True
-                reward = -10
+
+            # # 达到maxstep次数之后给予惩罚
+            # if t % args.max_timestep == 0:
+            #     done = True
+            #     reward = -10
 
             if not args.pre_train:
                 # 状态存储
                 agent.state_store_memory(pixel_obs, obs, act, reward, logprob)
 
-                if done or t == args.max_timestep-1:
+                if done or t == args.max_timestep:
                     pixel_state, vect_state, action, logprob, d_reward, adv = agent.get_trjt(pixel_obs_t1, obs_t1, done)
                     buffer.collect_traj(pixel_state, vect_state, action, logprob, d_reward, adv)
                     agent.memory.clear()

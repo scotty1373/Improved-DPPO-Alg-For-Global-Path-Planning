@@ -91,7 +91,7 @@ class ActorModel(nn.Module):
         except RuntimeError as e:
             print('CUDA error')
         action_sample = dist.sample()
-        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
+        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0, 1)
         action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
         action_logprob = dist.log_prob(action_sample)
 
