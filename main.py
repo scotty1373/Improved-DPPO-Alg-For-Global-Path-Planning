@@ -229,6 +229,9 @@ def main(args):
 
     agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
     env.close()
+    logger_ep.fp.close()
+    logger_iter.fp.close()
+    tb_logger.close()
 
 
 if __name__ == '__main__':
