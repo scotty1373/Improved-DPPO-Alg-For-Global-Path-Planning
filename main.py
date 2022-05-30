@@ -1,15 +1,10 @@
 # -*- coding: utf-8 -*-
-import matplotlib.pyplot as plt
 import numpy as np
-
-from Envs.sea_env_without_orient import RoutePlan
-from PPO.PPO import PPO, PPO_Buffer, SkipEnvFrame
-from utils_tools.common import log2json, dirs_creat, TIMESTAMP, seed_torch
+from PPO.PPO import PPO, PPO_Buffer
+from utils_tools.common import log2json, TIMESTAMP, seed_torch
+from utils_tools import worker
 from torch.utils.tensorboard import SummaryWriter
-from utils_tools.utils import state_frame_overlay, pixel_based, img_proc, first_init
-import matplotlib.pyplot as plt
-from PIL import Image, ImageDraw
-import seaborn as sns
+import torch.multiprocessing as mp
 from tqdm import tqdm
 import torch
 import argparse
@@ -32,10 +27,10 @@ def parse_args():
                         default=None)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=512)
+                        default=256)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=None)
+                        default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
                         default=16)
@@ -57,6 +52,9 @@ def parse_args():
     parser.add_argument('--device',
                         help='data device',
                         default='cpu')
+    parser.add_argument('--worker_num',
+                        help='worker number',
+                        default=3)
     args = parser.parse_args()
     return args
 
@@ -68,169 +66,60 @@ def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
 
 def main(args):
     args = args
-    # 是否随机初始化种子
-    if args.seed is not None:
-        seed = args.seed
-    else:
-        seed = None
-
-    # 环境与agent初始化
-    env = RoutePlan(barrier_num=3, seed=seed)
-    env.seed(13)
-    env = SkipEnvFrame(env, args.frame_skipping)
-    assert isinstance(args.batch_size, int)
-    # agent = PPO(state_dim=3*(7+24), action_dim=2, batch_size=args.batch_size)
     seed_torch(seed=25532)
     device = torch.device('cuda')
 
-    # Iter log初始化
-    logger_iter = log2json(filename='train_log_iter', type_json=True)
-    # epoch log初始化
-    logger_ep = log2json(filename='train_log_ep', type_json=True)
+    # # Iter log初始化
+    # logger_iter = log2json(filename='train_log_iter', type_json=True)
+    # # epoch log初始化
+    # logger_ep = log2json(filename='train_log_ep', type_json=True)
     # tensorboard初始化
     tb_logger = SummaryWriter(log_dir=f"./log/{TIMESTAMP}", flush_secs=120)
-    fig, ax1 = plt.subplots(1, 1)
-    sns.heatmap(env.env.heat_map, ax=ax1)
-    fig.suptitle('reward shaping heatmap')
-    tb_logger.add_figure('figure', fig)
 
-    agent = PPO(state_dim=args.frame_overlay * args.state_length,
-                action_dim=2,
-                batch_size=args.batch_size,
-                overlay=args.frame_overlay,
-                device=device,
-                logger=tb_logger)
+    global_ppo = PPO(state_dim=args.frame_overlay * args.state_length,
+                     action_dim=2,
+                     batch_size=args.batch_size,
+                     overlay=args.frame_overlay,
+                     device=device,
+                     logger=tb_logger)
 
     # 是否从预训练结果中载入ckpt
     if args.pre_train:
         if args.checkpoint is not None:
             checkpoint = args.checkpoint
-            agent.load_model(checkpoint)
+            global_ppo.load_model(checkpoint)
 
-    ep_history = []
-    """agent探索轨迹追踪"""
-    env.reset()
-    trace_image = env.env.render(mode='rgb_array')
-    trace_image = Image.fromarray(trace_image)
-    trace_path = ImageDraw.Draw(trace_image)
+    training_buffer = PPO_Buffer()
 
-    done = True
+    pipe_r, pipe_w = zip(*[mp.Pipe() for _ in range(args.worker_num)])
+    worker_list = [worker(args, f'worker{i}', i, global_ppo.pi, global_ppo.v, pipe_w[i]) for i in range(args.worker_num)]
+    [worker_idx.start() for worker_idx in worker_list]
+
     epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')
     for epoch in epochs:
-        reward_history = 0
-        entropy_acc_history = 0
-        entropy_ori_history = 0
-        buffer = PPO_Buffer()
-        if done:
-            """轨迹记录"""
-            trace_history, pixel_obs, obs, done = first_init(env, args)
-
-        step = tqdm(range(1, args.max_timestep + 1), leave=False, position=1, colour='red')
-        for t in step:
-            if done:
-                # 单幕结束显示轨迹
-                trace_path.line(trace_history, width=1, fill='black')
-                trace_history, pixel_obs, obs, done = first_init(env, args)
-            act, logprob, dist = agent.get_action((pixel_obs, obs))
-            # 环境交互
-            pixel_obs_t1_ori, obs_t1, reward, done, _ = env.step(act.squeeze())
-            pixel_obs_t1 = img_proc(pixel_obs_t1_ori)
-            # 随机漫步如果为1则不进行数据庞拼接
-            if args.frame_overlay == 1:
-                pass
+        steps = tqdm(range(0, args.worker_num), leave=False, position=1, colour='red')
+        # 从子线程中获取数据
+        for step_i in steps:
+            subprocess_buffer = pipe_r[step_i].recv()
+            if subprocess_buffer is None:
+                worker_list[step_i].join()
             else:
-                obs_t1 = state_frame_overlay(obs_t1, obs, args.frame_overlay)
-                pixel_obs_t1 = pixel_based(pixel_obs_t1, pixel_obs, args.frame_overlay)
+                training_buffer.collect_batch(subprocess_buffer.pixel_state,
+                                              subprocess_buffer.vect_state,
+                                              subprocess_buffer.action,
+                                              subprocess_buffer.logprob,
+                                              subprocess_buffer.d_reward,
+                                              subprocess_buffer.adv)
+            del subprocess_buffer
 
-            # # 达到maxstep次数之后给予惩罚
-            # if t % args.max_timestep == 0:
-            #     done = True
-            #     reward = -10
-
-            if not args.pre_train:
-                # 状态存储
-                agent.state_store_memory(pixel_obs, obs, act, reward, logprob)
-
-                if done or t == args.max_timestep:
-                    pixel_state, vect_state, action, logprob, d_reward, adv = agent.get_trjt(pixel_obs_t1, obs_t1, done)
-                    buffer.collect_traj(pixel_state, vect_state, action, logprob, d_reward, adv)
-                    agent.memory.clear()
-
-            entropy_temp = dist.entropy().cpu().numpy().squeeze()
-            entropy_acc = entropy_temp[0].item()
-            entropy_ori = entropy_temp[1].item()
-            log_text = {'epochs': epoch,
-                        'time_step': agent.t,
-                        'reward': reward,
-                        'entropy_acc': entropy_acc,
-                        'entropy_ori': entropy_ori,
-                        'acc': act.squeeze()[0].item(),
-                        'ori': act.squeeze()[1].item(),
-                        'actor_loss': agent.history_actor,
-                        'critic_loss': agent.history_critic}
-            step.set_description(f'epochs:{epoch}, '
-                                 f'time_step:{agent.t}, '
-                                 f'reward:{reward:.1f}, '
-                                 f'et_acc: {log_text["entropy_acc"]:.1f}, '
-                                 f'et_ori: {log_text["entropy_ori"]:.1f}, '
-                                 f'acc:{log_text["acc"]:.1f}, '
-                                 f'ori:{log_text["ori"]:.1f}, '
-                                 f'lr:{agent.a_opt.state_dict()["param_groups"][0]["lr"]:.5f}, '
-                                 f'ang_vel:{env.env.ship.angularVelocity:.1f}, '
-                                 f'actor_loss:{agent.history_actor:.1f}, '
-                                 f'critic_loss:{agent.history_critic:.1f}')
-            # iter数据写入log文件
-            logger_iter.write2json(log_text)
-
-            # 记录timestep, reward＿sum
-            agent.t += 1
-            obs = obs_t1
-            pixel_obs = pixel_obs_t1
-            reward_history += reward
-            entropy_acc_history += entropy_acc
-            entropy_ori_history += entropy_ori
-
-            trace_history.append(tuple(trace_trans(env.env.ship.position)))
         # 参数更新
-        agent.update(buffer)
-
+        global_ppo.update(training_buffer, args)
         # lr_Scheduler
-        agent.a_sch.step()
-        agent.c_sch.step()
+        global_ppo.a_sch.step()
+        global_ppo.c_sch.step()
+        global_ppo.ep += 1
 
-        ep_history.append(reward_history)
-        log_ep_text = {'epochs': epoch,
-                       'time_step': agent.t,
-                       'ep_reward': reward_history,
-                       'entropy_acc_mean': entropy_acc_history / (t+1),
-                       'entropy_ori_mean': entropy_ori_history / (t+1)}
-        epochs.set_description(f'epochs:{epoch}, '
-                               f'time_step:{agent.t}, '
-                               f'reward:{reward_history:.1f}, '
-                               f'entropy_acc:{log_ep_text["entropy_acc_mean"]:.1f}, '
-                               f'entropy_ori:{log_ep_text["entropy_ori_mean"]:.1f}')
-        # epoch数据写入log文件
-        logger_ep.write2json(log_ep_text)
-
-        # tensorboard logger
-        tb_logger.add_scalar(tag='Reward/ep_reward',
-                             scalar_value=reward_history,
-                             global_step=epoch)
-        tb_logger.add_scalar(tag='Reward/ep_entropy_acc',
-                             scalar_value=log_ep_text["entropy_acc_mean"],
-                             global_step=epoch)
-        tb_logger.add_scalar(tag='Reward/ep_entropy_ori',
-                             scalar_value=log_ep_text["entropy_ori_mean"],
-                             global_step=epoch)
-        tb_logger.add_image('Image/Trace',
-                            np.array(trace_image),
-                            global_step=epoch,
-                            dataformats='HWC')
-
-    agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
-    env.close()
-    logger_ep.fp.close()
-    logger_iter.fp.close()
+    global_ppo.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
     tb_logger.close()
 
 
