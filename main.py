@@ -33,10 +33,10 @@ def parse_args():
                         default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=16)
+                        default=64)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=4)
+                        default=3)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
                         default=3)
@@ -59,15 +59,11 @@ def parse_args():
     return args
 
 
-def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
-    remap_vect = np.array((vect[0] * ratio + (IMG_SIZE_RENDEER / 2), (-vect[1] * ratio) + IMG_SIZE_RENDEER), dtype=np.uint16)
-    return remap_vect
-
-
 def main(args):
     args = args
     seed_torch(seed=25532)
     device = torch.device('cuda')
+    torch.multiprocessing.set_start_method('spawn')
 
     # # Iter log初始化
     # logger_iter = log2json(filename='train_log_iter', type_json=True)

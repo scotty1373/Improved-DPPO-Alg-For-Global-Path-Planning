@@ -14,7 +14,7 @@ LEARNING_RATE_ACTOR = 1e-4
 LEARNING_RATE_CRITIC = 2e-4
 DECAY = 0.95
 EPILSON = 0.2
-max_timestep = 512
+max_mem_len = 512
 
 
 class PPO_Buffer:
@@ -101,8 +101,8 @@ class PPO:
         self.lamda = 0.95
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
-        self.c_sch = torch.optim.lr_scheduler.StepLR(self.c_opt, step_size=300, gamma=0.1)
-        self.a_sch = torch.optim.lr_scheduler.StepLR(self.a_opt, step_size=300, gamma=0.1)
+        self.c_sch = torch.optim.lr_scheduler.StepLR(self.c_opt, step_size=500, gamma=0.1)
+        self.a_sch = torch.optim.lr_scheduler.StepLR(self.a_opt, step_size=500, gamma=0.1)
 
         # training configuration
         self.history_critic = 0
@@ -113,7 +113,7 @@ class PPO:
     def _init(self, state_dim, action_dim, overlay, device):
         self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
         self.v = CriticModel(state_dim, action_dim, overlay).to(device)
-        self.memory = deque(maxlen=max_timestep)
+        self.memory = deque(maxlen=max_mem_len)
 
     def get_action(self, obs_):
         pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(obs_[0])).to(self.device), torch.Tensor(copy.deepcopy(obs_[1])).to(self.device)
@@ -181,12 +181,12 @@ class PPO:
 
         target_value = self.v(pixel_state, vect_state).squeeze(-1)
         target_value = target_value[..., None]
+        self.c_opt.zero_grad()
         assert target_value.shape == q_value.shape
         critic_loss = self.c_loss(target_value, q_value)
         self.history_critic = critic_loss.detach().item()
-        self.c_opt.zero_grad()
         critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.v.parameters(), max_norm=1000, norm_type=2)
+        torch.nn.utils.clip_grad_value_(self.v.parameters(), clip_value=100)
         self.c_opt.step()
 
     def actor_update(self, pixel_state, vect_state, action, logprob_old, advantage):

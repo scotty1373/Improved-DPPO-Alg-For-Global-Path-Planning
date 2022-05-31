@@ -120,7 +120,7 @@ class HeatMap:
                     if dist <= barr_list['radius'][idx_barr]:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(barr_list['radius'][idx_barr]*0.05))
                         continue
-                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 2:
+                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 2.15:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(dist - barr_list['radius'][idx_barr]*0.95))
                     else:
                         pass
@@ -140,12 +140,13 @@ class HeatMap:
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(center, (row_offset, col_offset))
-                if dist <= self.size[0]//2 * 0.4:
+                ratio = 0.5
+                if dist <= self.size[0]//2 * ratio:
                     """测试修改"""
-                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * 0.4) + 3.8))
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * ratio) + 3.8))
                 else:
                     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8))
-        return (- 1 + normalize(_mat)) * 2
+        return (- 1 + normalize(_mat))
 
     def reach_rewardCal(self, reachinfo):
         """
@@ -156,11 +157,12 @@ class HeatMap:
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(reachinfo['position'], (row_offset, col_offset))
+                ratio = 0.5
                 if dist <= reachinfo['radius']:
-                    _mat[row_offset, col_offset] = self.reach_reward * (8 - math.log(reachinfo['radius']*0.2))
+                    _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(reachinfo['radius']*ratio))
                     continue
                 else:
-                    _mat[row_offset, col_offset] = self.reach_reward * (8 - math.log(dist - reachinfo['radius']*0.8))
+                    _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(dist-reachinfo['radius']*(1-ratio)))
         return normalize(_mat)
 
 

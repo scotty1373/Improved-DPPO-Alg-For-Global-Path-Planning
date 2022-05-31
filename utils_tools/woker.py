@@ -48,7 +48,7 @@ class worker(mp.Process):
         env.seed(13)
         env = SkipEnvFrame(env, args.frame_skipping)
         assert isinstance(args.batch_size, int)
-        seed_torch(seed=25532)
+        # seed_torch(seed=25532)
         device = torch.device('cpu')
 
         # 子线程显示当前环境heatmap
@@ -112,6 +112,7 @@ class worker(mp.Process):
                         pixel_state, vect_state, action, logprob, d_reward, adv = agent.get_trjt(pixel_obs_t1, obs_t1, done)
                         buffer.collect_trajorbatch(pixel_state, vect_state, action, logprob, d_reward, adv)
                         agent.memory.clear()
+                        done = True
 
                 entropy_temp = dist.entropy().cpu().numpy().squeeze()
                 entropy_acc = entropy_temp[0].item()

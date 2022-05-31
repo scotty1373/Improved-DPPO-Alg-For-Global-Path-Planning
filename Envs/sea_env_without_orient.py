@@ -260,7 +260,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 设置抵达点位置
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=0.75)
+        circle_shape = b2CircleShape(radius=1.25)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
@@ -391,7 +391,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         # ship投影方向速度reward计算
         if vel_scalar > 3.5:
-            reward_vel = -0.5
+            reward_vel = -0.3
         elif vel_scalar < 0.5:
             reward_vel = -0.5
         else:
@@ -411,13 +411,13 @@ class RoutePlan(gym.Env, EzPickle):
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 100
+                reward = 20
                 done = True
             elif self.ground_contect:
-                reward = -100
+                reward = -20
                 done = True
             else:
-                reward = -10
+                reward = -15
                 done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
