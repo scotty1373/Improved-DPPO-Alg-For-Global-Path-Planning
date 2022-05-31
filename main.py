@@ -92,7 +92,7 @@ def main(args):
     training_buffer = PPO_Buffer()
 
     pipe_r, pipe_w = zip(*[mp.Pipe() for _ in range(args.worker_num)])
-    worker_list = [worker(args, f'worker{i}', i, global_ppo.pi, global_ppo.v, pipe_w[i]) for i in range(args.worker_num)]
+    worker_list = [worker(args, f'worker{i}', i, global_ppo.pi, global_ppo.v, pipe_w[i], TIMESTAMP) for i in range(args.worker_num)]
     [worker_idx.start() for worker_idx in worker_list]
 
     epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')

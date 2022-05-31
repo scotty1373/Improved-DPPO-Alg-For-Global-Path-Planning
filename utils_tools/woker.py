@@ -2,8 +2,9 @@
 import numpy as np
 from Envs.sea_env_without_orient import RoutePlan
 from PPO.PPO import PPO, PPO_Buffer, SkipEnvFrame
-from utils_tools.common import seed_torch
+from utils_tools.common import seed_torch, TIMESTAMP
 from utils_tools.utils import state_frame_overlay, pixel_based, img_proc, first_init
+from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 import torch.multiprocessing as mp
@@ -22,7 +23,7 @@ def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
 
 
 class worker(mp.Process):
-    def __init__(self, args, name, worker_id, g_net_pi, g_net_v, pipe_line, tb_logger=None):
+    def __init__(self, args, name, worker_id, g_net_pi, g_net_v, pipe_line, time_stamp=None):
         super(worker, self).__init__()
         self.config = args
         self.workerID = worker_id
@@ -30,7 +31,7 @@ class worker(mp.Process):
         self.g_net_pi = g_net_pi
         self.g_net_v = g_net_v
         self.pipe_line = pipe_line
-        self.tb_logger = tb_logger
+        self.tb_logger = time_stamp
 
     def run(self):
         args = self.config
@@ -39,6 +40,8 @@ class worker(mp.Process):
             seed = args.seed
         else:
             seed = None
+
+        tb_logger = SummaryWriter(log_dir=f"./log/{self.tb_logger}", flush_secs=120)
 
         # 环境与agent初始化
         env = RoutePlan(barrier_num=3, seed=seed)
@@ -121,6 +124,13 @@ class worker(mp.Process):
                 entropy_acc_history += entropy_acc
                 entropy_ori_history += entropy_ori
 
+                tb_logger.add_scalar(tag=f'Iter_{self.name}/entropy_acc',
+                                     scalar_value=entropy_acc,
+                                     global_step=epoch * args.max_timestep + t)
+                tb_logger.add_scalar(tag=f'Iter_{self.name}/entropy_ori',
+                                     scalar_value=entropy_ori,
+                                     global_step=epoch * args.max_timestep + t)
+
                 trace_history.append(tuple(trace_trans(env.env.ship.position)))
 
             """管道发送buffer，并清空buffer"""
@@ -139,19 +149,19 @@ class worker(mp.Process):
                            'entropy_ori_mean': entropy_ori_history / args.max_timestep}
 
             # tensorboard logger
-            # self.tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_reward',
-            #                           scalar_value=reward_history,
-            #                           global_step=epoch)
-            # self.tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_acc',
-            #                           scalar_value=log_ep_text["entropy_acc_mean"],
-            #                           global_step=epoch)
-            # self.tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_ori',
-            #                           scalar_value=log_ep_text["entropy_ori_mean"],
-            #                           global_step=epoch)
-            # self.tb_logger.add_image(tag=f'Image_{self.name}/Trace',
-            #                          img_tensor=np.array(trace_image),
-            #                          global_step=epoch,
-            #                          dataformats='HWC')
+            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_reward',
+                                 scalar_value=reward_history,
+                                 global_step=epoch)
+            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_acc',
+                                 scalar_value=log_ep_text["entropy_acc_mean"],
+                                 global_step=epoch)
+            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_ori',
+                                 scalar_value=log_ep_text["entropy_ori_mean"],
+                                 global_step=epoch)
+            tb_logger.add_image(tag=f'Image_{self.name}/Trace',
+                                img_tensor=np.array(trace_image),
+                                global_step=epoch,
+                                dataformats='HWC')
         env.close()
         self.pipe_line.send(None)
         self.pipe_line.close()
