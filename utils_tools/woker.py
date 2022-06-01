@@ -44,8 +44,8 @@ class worker(mp.Process):
         tb_logger = SummaryWriter(log_dir=f"./log/{self.tb_logger}", flush_secs=120)
 
         # 环境与agent初始化
-        env = RoutePlan(barrier_num=3, seed=seed)
-        env.seed(13)
+        env = RoutePlan(barrier_num=3)
+        # env.seed(13)
         env = SkipEnvFrame(env, args.frame_skipping)
         assert isinstance(args.batch_size, int)
         # seed_torch(seed=25532)
@@ -56,6 +56,11 @@ class worker(mp.Process):
         sns.heatmap(env.env.heat_map, ax=ax1)
         fig.suptitle('reward shaping heatmap')
         # self.tb_logger.add_figure(f'worker{self.name}/heatmap', fig)
+
+        fig, ax1 = plt.subplots(1, 1)
+        sns.heatmap(env.env.heat_map, ax=ax1)
+        fig.suptitle('reward shaping heatmap')
+        tb_logger.add_figure('figure', fig)
 
         agent = PPO(state_dim=args.frame_overlay * args.state_length,
                     action_dim=2,
@@ -137,10 +142,7 @@ class worker(mp.Process):
             """管道发送buffer，并清空buffer"""
             self.pipe_line.send(buffer)
             # 从global取回参数
-            try:
-                self.pull_from_global(agent)
-            except RuntimeError as e:
-                print('pull parameter error')
+            self.pull_from_global(agent)
 
             ep_history.append(reward_history)
             log_ep_text = {'epochs': epoch,

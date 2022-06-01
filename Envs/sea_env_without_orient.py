@@ -273,7 +273,7 @@ class RoutePlan(gym.Env, EzPickle):
         heat_map_init = HeatMap(bound_list)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
         self.heat_map += heat_map_init.ground_rewardCal
-        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra)) * 3
+        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
         # import matplotlib.pyplot as plt
         # import seaborn as sns
         # fig, axes = plt.subplots(1, 1)
@@ -398,9 +398,9 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         if self.dist_record is not None and self.dist_record <= end_info.distance:
-            reward_dist = -1
+            reward_dist = -3
         else:
-            reward_dist = 0
+            reward_dist = 1
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
@@ -411,13 +411,13 @@ class RoutePlan(gym.Env, EzPickle):
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 20
+                reward = 100
                 done = True
             elif self.ground_contect:
-                reward = -20
+                reward = -1000
                 done = True
             else:
-                reward = -15
+                reward = -10
                 done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''

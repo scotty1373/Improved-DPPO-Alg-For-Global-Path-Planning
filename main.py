@@ -13,6 +13,7 @@ TIME_BOUNDARY = 500
 IMG_SIZE = (80, 80)
 IMG_SIZE_RENDEER = 480
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='PPO config option')
@@ -33,7 +34,7 @@ def parse_args():
                         default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=64)
+                        default=16)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
                         default=3)
@@ -54,14 +55,14 @@ def parse_args():
                         default='cpu')
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=3)
+                        default=5)
     args = parser.parse_args()
     return args
 
 
 def main(args):
     args = args
-    seed_torch(seed=25532)
+    seed_torch()
     device = torch.device('cuda')
     torch.multiprocessing.set_start_method('spawn')
 

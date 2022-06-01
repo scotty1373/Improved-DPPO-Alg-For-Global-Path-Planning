@@ -10,9 +10,9 @@ from PIL import Image
 import numpy as np
 import copy
 
-LEARNING_RATE_ACTOR = 1e-4
-LEARNING_RATE_CRITIC = 2e-4
-DECAY = 0.95
+LEARNING_RATE_ACTOR = 1e-5
+LEARNING_RATE_CRITIC = 5e-5
+DECAY = 0.98
 EPILSON = 0.2
 max_mem_len = 512
 
@@ -73,7 +73,7 @@ class SkipEnvFrame(gym.Wrapper):
             total_reward += reward
             if done:
                 break
-        return pixel, obs, total_reward, done, info
+        return pixel, obs, reward, done, info
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
@@ -98,7 +98,7 @@ class PPO:
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
         self.clip_ratio = 0.2
-        self.lamda = 0.95
+        self.lamda = 0.98
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
         self.c_sch = torch.optim.lr_scheduler.StepLR(self.c_opt, step_size=500, gamma=0.1)
@@ -148,7 +148,7 @@ class PPO:
             critic_value_ = self.v(state_t)
             d_reward = torch.Tensor(decay_reward)
             advantage = d_reward - critic_value_
-        # advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+        advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-4)
         if torch.isnan(advantage).any():
             print("advantage is nan")
         return advantage

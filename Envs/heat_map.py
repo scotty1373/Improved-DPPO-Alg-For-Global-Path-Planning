@@ -140,13 +140,13 @@ class HeatMap:
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(center, (row_offset, col_offset))
-                ratio = 0.5
+                ratio = 0.8
                 if dist <= self.size[0]//2 * ratio:
                     """测试修改"""
                     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * ratio) + 3.8))
                 else:
-                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8))
-        return (- 1 + normalize(_mat))
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8)) * 3
+        return normalize(_mat) - 1
 
     def reach_rewardCal(self, reachinfo):
         """
@@ -163,7 +163,7 @@ class HeatMap:
                     continue
                 else:
                     _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(dist-reachinfo['radius']*(1-ratio)))
-        return normalize(_mat)
+        return normalize(_mat) - 1
 
 
 if __name__ == '__main__':
