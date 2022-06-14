@@ -66,5 +66,23 @@ def first_init(env, args):
     pixel_obs = img_proc(pixel_obs_ori) * np.ones((1, 3, 80, 80))
     return trace_history, pixel_obs, obs, done
 
+# 参数初始化
+def layer_init(layer, *, mean=0, std=0.1):
+    torch.nn.init.normal_(layer.weight, mean=mean, std=std)
+    torch.nn.init.constant_(layer.bias, 0)
+    return layer
+
+
+def uniform_init(layer, *, a=-3e-3, b=3e-3):
+    torch.nn.init.uniform_(layer.weight, a, b)
+    torch.nn.init.constant_(layer.bias, 0)
+    return layer
+
+
+def orthogonal_init(layer, *, gain=1):
+    torch.nn.init.orthogonal_(layer.weight, gain=gain)
+    torch.nn.init.constant_(layer.bias, 0)
+    return layer
+
 
 

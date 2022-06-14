@@ -94,7 +94,8 @@ class PPO:
         # optimizer initialize
         self.lr_actor = LEARNING_RATE_ACTOR
         self.lr_critic = LEARNING_RATE_CRITIC
-        self.decay_index = DECAY
+        self.reward_dc_ext = 0.999
+        self.reward_dc_int = 0.99
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
         self.clip_ratio = 0.2
@@ -129,17 +130,21 @@ class PPO:
         self.memory.append((pixel_s, s, act, r, logprob))
 
     # 计算reward衰减，根据马尔可夫过程，从最后一个reward向前推
-    def decayed_reward(self, singal_state_frame, reward_):
-        decayed_rd = []
+    def decayed_reward(self, singal_state_frame, reward_ext, reward_int, reward_ext_decay, reward_int_decay):
+        decay_rd_ext = []
+        decay_rd_int = []
         with torch.no_grad():
             state_frame_pixel = torch.Tensor(singal_state_frame[0]).to(self.device)
             state_frame_vect = torch.Tensor(singal_state_frame[1]).to(self.device)
-            value_target = self.v(state_frame_pixel, state_frame_vect).cpu().detach().numpy()
-            for rd_ in reward_[::-1]:
-                value_target = rd_ + value_target * self.decay_index
-                decayed_rd.append(value_target)
-            decayed_rd.reverse()
-        return decayed_rd
+            value_ext, value_int = self.v(state_frame_pixel, state_frame_vect).cpu().detach().numpy()
+            for rd_ext, rd_int in zip(reward_ext[::-1], reward_int[::-1]):
+                value_ext = rd_ext + value_ext * self.reward_dc_ext
+                value_int = rd_int + value_int * self.reward_dc_int
+                decay_rd_ext.append(value_ext)
+                decay_rd_int.append(value_int)
+            decay_rd_ext.reverse()
+            decay_rd_int.reverse()
+        return decay_rd_ext, decay_rd_int
 
     # 计算actor更新用的advantage value
     def advantage_calcu(self, decay_reward, state_t):
@@ -163,15 +168,8 @@ class PPO:
             td_error = td_error.cpu().numpy()
 
             gae_advantage = signal.lfilter([1], [1, -self.decay_index*self.lamda], td_error[::-1, ...], axis=0)[::-1, ...]
-
-            # for idx, td in enumerate(td_error.numpy()[::-1]):
-            #     temp = 0
-            #     for adv_idx, weight in enumerate(range(idx, -1, -1)):
-            #         temp += gae_advantage[adv_idx, 0] * ((self.lamda*self.epilson)**weight)
-            #     gae_advantage[idx, ...] = td + temp
             """！！！以下代码结构需做优化！！！"""
             gae_advantage = torch.Tensor(gae_advantage.copy()).to(self.device)
-        # gae_advantage = (gae_advantage - gae_advantage.mean()) / (gae_advantage.std() + 1e-8)
         return gae_advantage
 
     # 计算critic更新用的 Q(s, a)和 V(s)

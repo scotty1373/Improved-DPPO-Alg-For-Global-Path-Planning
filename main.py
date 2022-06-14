@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from PPO.PPO import PPO, PPO_Buffer
+from RND.rnd_model import RNDModel
 from utils_tools.common import log2json, TIMESTAMP, seed_torch
-from utils_tools import worker
+from utils_tools.worker import worker
 from torch.utils.tensorboard import SummaryWriter
 import torch.multiprocessing as mp
 from tqdm import tqdm
@@ -24,7 +25,7 @@ def parse_args():
                         help='Pretrained?',
                         default=False)
     parser.add_argument('--checkpoint',
-                        help='If pre_traine is True, this option is pretrained ckpt path',
+                        help='If pre_trained is True, this option is pretrained ckpt path',
                         default=None)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -55,7 +56,7 @@ def parse_args():
                         default='cpu')
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=5)
+                        default=1)
     args = parser.parse_args()
     return args
 
@@ -79,6 +80,8 @@ def main(args):
                      overlay=args.frame_overlay,
                      device=device,
                      logger=tb_logger)
+    global_rnd = RNDModel(state_dim=args.frame_overlay * args.state_length,
+                          frame_overlay=args.frame_overlay)
 
     # 是否从预训练结果中载入ckpt
     if args.pre_train:

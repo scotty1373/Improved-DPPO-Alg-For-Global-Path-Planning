@@ -8,6 +8,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 import numpy as np
+from utils_tools.utils import layer_init, uniform_init, orthogonal_init
 
 
 class ActorModel(nn.Module):
@@ -121,7 +122,7 @@ class CriticModel(nn.Module):
         self.fc2 = nn.Sequential(
             layer_init(nn.Linear(400+100, 64)),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(64, 1)))
+            layer_init(nn.Linear(64, 2)))
 
         extractor = [self.conv1, self.actv1,
                      self.conv2, self.actv2,
@@ -143,20 +144,9 @@ class CriticModel(nn.Module):
         common_vect = self.fc(common_vect)
         common_vect = torch.cat((common_vect, state_vect), dim=-1)
         common_vect = self.fc2(common_vect)
+        value_ext, value_int = common_vect.chunk(2, dim=-1)
 
-        return common_vect
-
-
-def layer_init(layer, *, mean=0, std=0.1):
-    nn.init.normal_(layer.weight, mean=mean, std=std)
-    nn.init.constant_(layer.bias, 0)
-    return layer
-
-
-def uniform_init(layer, *, a=-3e-3, b=3e-3):
-    nn.init.uniform_(layer.weight, a, b)
-    nn.init.constant_(layer.bias, 0)
-    return layer
+        return value_ext, value_int
 
 
 if __name__ == '__main__':
@@ -165,8 +155,9 @@ if __name__ == '__main__':
     x = torch.randn((10, 3, 80, 80))
     x_vect = torch.rand((10, 2*3))
     out = model(x, x_vect)
+    out_critic = model_critic(x, x_vect)
     from torch.utils.tensorboard import SummaryWriter
     logger = SummaryWriter(log_dir='./', flush_secs=100)
     logger.add_graph(model, (x, x_vect))
-    out_critic = model_critic(x)
+
 
