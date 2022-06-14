@@ -80,7 +80,7 @@ class SkipEnvFrame(gym.Wrapper):
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, batch_size, overlay, device, logger=None):
+    def __init__(self, state_dim, action_dim, batch_size, overlay, device, logger=None, rnd=None):
         self.action_dim = action_dim
         self.state_dim = state_dim
         self.batch_size = batch_size
@@ -111,6 +111,9 @@ class PPO:
         self.t = 0
         self.ep = 0
 
+        # RND block
+        self.rnd = rnd
+
     def _init(self, state_dim, action_dim, overlay, device):
         self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
         self.v = CriticModel(state_dim, action_dim, overlay).to(device)
@@ -126,11 +129,11 @@ class PPO:
 
         return action.cpu().detach().numpy(), action_logprob.cpu().detach().numpy(), dist
 
-    def state_store_memory(self, pixel_s, s, act, r, logprob):
-        self.memory.append((pixel_s, s, act, r, logprob))
+    def state_store_memory(self, pixel_s, s, act, r, logprob, next_pixel_s, next_s):
+        self.memory.append((pixel_s, s, act, r, logprob, next_pixel_s, next_s))
 
     # 计算reward衰减，根据马尔可夫过程，从最后一个reward向前推
-    def decayed_reward(self, singal_state_frame, reward_ext, reward_int, reward_ext_decay, reward_int_decay):
+    def decayed_reward(self, singal_state_frame, reward_ext, reward_int):
         decay_rd_ext = []
         decay_rd_int = []
         with torch.no_grad():
@@ -160,7 +163,7 @@ class PPO:
 
     def gae_adv(self, state_pixel, state_vect, reward_step, last_val):
         with torch.no_grad():
-            critic_value_ = self.v(state_pixel, state_vect)
+            value_ext, value_int = self.v(state_pixel, state_vect)
             critic_value_ = torch.cat([critic_value_, last_val.reshape(-1, 1)], dim=0)
 
             assert reward_step.shape == critic_value_.shape
@@ -218,20 +221,36 @@ class PPO:
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
 
+    def calculate_intrinsic_reward(self, pixel_state, vect_state, device):
+        pixel_state = torch.FloatTensor(pixel_state).to(device)
+        vect_state = torch.FloatTensor(vect_state).to(device)
+        self.rnd.eval()
+        target_feature, predict_feature = self.rnd(pixel_state, vect_state)
+        intrinsic_reward = torch.functional.mse_loss(target_feature, predict_feature, reduction='sum')
+        return intrinsic_reward.cpu()
+
     # 用于获取单幕中用于更新actor和critic的advantage和reward_sum
-    def get_trjt(self, last_pixel, last_vect, done):
-        pixel_state, vect_state, action, reward_nstep, logprob_nstep = zip(*self.memory)
+    def get_trjt(self, last_pixel, last_vect, done, main_device):
+        pixel_state, vect_state, action, reward_ext, logprob_nstep, next_pixel_state, next_vect_state = zip(*self.memory)
         pixel_state = np.concatenate(pixel_state, axis=0)
         vect_state = np.concatenate(vect_state, axis=0)
         action = np.concatenate(action, axis=0)
-        reward_nstep = np.stack(reward_nstep, axis=0)
+        reward_ext = np.stack(reward_ext, axis=0)
         logprob_nstep = np.concatenate(logprob_nstep, axis=0)
-        # 动作价值计算
-        discount_reward = self.decayed_reward((last_pixel, last_vect), reward_nstep)
+        next_pixel_state = np.concatenate(next_pixel_state, axis=0)
+        next_vect_state = np.concatenate(next_vect_state, axis=0)
+
+        # intrinsic reward计算
+        intrinsic_reward = self.calculate_intrinsic_reward(next_pixel_state, next_vect_state, main_device)
+
+        # ext reward计算
+        discount_rd_ext, discount_rd_int = self.decayed_reward((last_pixel, last_vect), reward_ext, intrinsic_reward)
+
+        # 计算最后一个状态的内在回报和外在回报
         with torch.no_grad():
             last_frame_pixel = torch.Tensor(last_pixel)
             last_frame_vect = torch.Tensor(last_vect)
-            last_val = self.v(last_frame_pixel, last_frame_vect)
+            last_val_ext, last_val_int = self.v(last_frame_pixel, last_frame_vect)
 
         pixel_state = torch.Tensor(pixel_state)
         vect_state = torch.Tensor(vect_state)
@@ -239,7 +258,7 @@ class PPO:
         logprob_nstep = torch.FloatTensor(logprob_nstep)
         reward_nstep = reward_nstep.reshape(-1, 1)
         if done:
-            last_val = torch.zeros((1, 1))
+            last_val_ext = last_val_int = torch.zeros((1, 1))
         try:
             reward = torch.FloatTensor(reward_nstep)
             reward = torch.cat((reward, last_val), dim=0)
