@@ -23,13 +23,14 @@ def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
 
 
 class worker(mp.Process):
-    def __init__(self, args, name, worker_id, g_net_pi, g_net_v, pipe_line, time_stamp=None):
+    def __init__(self, args, name, worker_id, g_net_pi, g_net_v, g_net_rnd, pipe_line, time_stamp=None):
         super(worker, self).__init__()
         self.config = args
         self.workerID = worker_id
         self.name = f'{name}'
         self.g_net_pi = g_net_pi
         self.g_net_v = g_net_v
+        self.g_net_rnd = g_net_rnd
         self.pipe_line = pipe_line
         self.tb_logger = time_stamp
 
@@ -62,7 +63,8 @@ class worker(mp.Process):
         fig.suptitle('reward shaping heatmap')
         tb_logger.add_figure('figure', fig)
 
-        agent = PPO(state_dim=args.frame_overlay * args.state_length,
+        agent = PPO(frame_overlay=args.frame_overlay,
+                    state_length=args.state_length,
                     action_dim=2,
                     batch_size=args.batch_size,
                     overlay=args.frame_overlay,
@@ -89,6 +91,7 @@ class worker(mp.Process):
             entropy_acc_history = 0
             entropy_ori_history = 0
             buffer = PPO_Buffer()
+            """***********这部分作为重置并没有起到训练连接的作用， 可删除if判断***********"""
             if done:
                 """轨迹记录"""
                 trace_history, pixel_obs, obs, done = first_init(env, args)
@@ -109,13 +112,15 @@ class worker(mp.Process):
                     obs_t1 = state_frame_overlay(obs_t1, obs, args.frame_overlay)
                     pixel_obs_t1 = pixel_based(pixel_obs_t1, pixel_obs, args.frame_overlay)
 
-                if not args.pre_train:
+                if args.train:
                     # 状态存储
-                    agent.state_store_memory(pixel_obs, obs, act, reward, logprob)
+                    next_pixel_state = pixel_obs_t1[:, 0, ...][:, None, ...]
+                    next_vect_state = obs_t1[:, :3]
+                    agent.state_store_memory(pixel_obs, obs, act, reward, logprob, next_pixel_state, next_vect_state)
                     # 防止最后一次数据未被存储进buffer
                     if done or t == args.max_timestep - 1:
-                        pixel_state, vect_state, action, logprob, d_reward, adv = agent.get_trjt(pixel_obs_t1, obs_t1, done)
-                        buffer.collect_trajorbatch(pixel_state, vect_state, action, logprob, d_reward, adv)
+                        pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state = agent.get_trjt(pixel_obs_t1, obs_t1, done)
+                        buffer.collect_trajorbatch(pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state)
                         agent.memory.clear()
                         done = True
 
@@ -172,6 +177,7 @@ class worker(mp.Process):
     def pull_from_global(self, subprocess):
         self.hard_update(self.g_net_pi, subprocess.pi)
         self.hard_update(self.g_net_v, subprocess.v)
+        self.hard_update(self.g_net_rnd, subprocess.rnd)
 
     @staticmethod
     def hard_update(model, target_model):

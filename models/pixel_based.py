@@ -117,12 +117,12 @@ class CriticModel(nn.Module):
             nn.ReLU(inplace=True)
         )
         self.fc = nn.Sequential(
-            layer_init(nn.Linear(512+100, 400)),
+            orthogonal_init(nn.Linear(512+100, 400), gain=np.sqrt(2)),
             nn.ReLU(inplace=True))
         self.fc2 = nn.Sequential(
-            layer_init(nn.Linear(400+100, 64)),
+            orthogonal_init(nn.Linear(400+100, 64), gain=0.01),
             nn.ReLU(inplace=True),
-            layer_init(nn.Linear(64, 2)))
+            orthogonal_init(nn.Linear(64, 2), gain=0.01))
 
         extractor = [self.conv1, self.actv1,
                      self.conv2, self.actv2,

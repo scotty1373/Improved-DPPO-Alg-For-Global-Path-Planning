@@ -1,6 +1,8 @@
 import numpy
 import torch
 from models.pixel_based import ActorModel, CriticModel
+from utils_tools.utils import RunningMeanStd
+from RND.rnd_model import RNDModel
 from torch.distributions import Normal
 import gym
 from collections import deque
@@ -23,40 +25,51 @@ class PPO_Buffer:
         self.vect_state = []
         self.action = []
         self.logprob = []
-        self.d_reward = []
+        self.d_rwd_ext = []
+        self.d_rwd_int = []
         self.adv = []
+        self.next_state = []
 
-    def collect_trajorbatch(self, pixel, vect, act, logp, d_reward, adv):
+    def collect_trajorbatch(self, pixel, vect, act, logp, d_rwd_ext, d_rwd_int, adv, next_state):
         self.pixel_state.append(pixel)
         self.vect_state.append(vect)
         self.action.append(act)
         self.logprob.append(logp)
-        self.d_reward.append(d_reward)
+        self.d_rwd_ext.append(d_rwd_ext)
+        self.d_rwd_int.append(d_rwd_int)
         self.adv.append(adv)
+        self.next_state.append(next_state)
 
-    def collect_batch(self, pixel_state, vect_state, action, logprob, d_reward, adv):
-        self.pixel_state += pixel_state
-        self.vect_state += vect_state
-        self.action += action
-        self.logprob += logprob
-        self.d_reward += d_reward
+    def collect_batch(self, pixel, vect, act, logp, d_rwd_ext, d_rwd_int, adv, next_state):
+        self.pixel_state += pixel
+        self.vect_state += vect
+        self.action += act
+        self.logprob += logp
+        self.d_rwd_ext += d_rwd_ext
+        self.d_rwd_int += d_rwd_int
         self.adv += adv
+        self.next_state += next_state
 
     def get_data(self, device):
         self.pixel_state = torch.cat(self.pixel_state, dim=0).to(device)
         self.vect_state = torch.cat(self.vect_state, dim=0).to(device)
         self.action = torch.cat(self.action, dim=0).to(device)
         self.logprob = torch.cat(self.logprob, dim=0).to(device)
-        self.d_reward = torch.cat(self.d_reward, dim=0).to(device)
+        self.d_rwd_ext = torch.cat(self.d_rwd_ext, dim=0).to(device)
+        self.d_rwd_int = torch.cat(self.d_rwd_int, dim=0).to(device)
         self.adv = torch.cat(self.adv, dim=0).to(device)
+        self.next_state = (np.concatenate([pixel[0] for pixel in self.next_state], axis=0),
+                           np.concatenate([pixel[1] for pixel in self.next_state], axis=0))
 
     def cleanup(self):
         self.pixel_state = []
         self.vect_state = []
         self.action = []
         self.logprob = []
-        self.d_reward = []
+        self.d_rwd_ext = []
+        self.d_rwd_int = []
         self.adv = []
+        self.next_state = []
 
 
 class SkipEnvFrame(gym.Wrapper):
@@ -80,9 +93,10 @@ class SkipEnvFrame(gym.Wrapper):
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, batch_size, overlay, device, logger=None, rnd=None):
+    def __init__(self, frame_overlay, state_length, action_dim, batch_size, overlay, device, logger=None):
+        self.state_length = state_length
+        self.state_dim = frame_overlay * state_length
         self.action_dim = action_dim
-        self.state_dim = state_dim
         self.batch_size = batch_size
         self.frame_overlay = overlay
         self.device = device
@@ -112,12 +126,17 @@ class PPO:
         self.ep = 0
 
         # RND block
-        self.rnd = rnd
+        self.extcoef = 2.0
+        self.intcoef = 1.0
+        self.staterms = RunningMeanStd(shape=(1, 1, 80, 80))
+        self.vectrms = RunningMeanStd(shape=(1, 3))
+        self.rwd_rms = RunningMeanStd()
 
     def _init(self, state_dim, action_dim, overlay, device):
         self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
         self.v = CriticModel(state_dim, action_dim, overlay).to(device)
         self.memory = deque(maxlen=max_mem_len)
+        self.rnd = RNDModel(self.state_length, device).to(device)
 
     def get_action(self, obs_):
         pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(obs_[0])).to(self.device), torch.Tensor(copy.deepcopy(obs_[1])).to(self.device)
@@ -139,7 +158,9 @@ class PPO:
         with torch.no_grad():
             state_frame_pixel = torch.Tensor(singal_state_frame[0]).to(self.device)
             state_frame_vect = torch.Tensor(singal_state_frame[1]).to(self.device)
-            value_ext, value_int = self.v(state_frame_pixel, state_frame_vect).cpu().detach().numpy()
+            value_ext, value_int = self.v(state_frame_pixel, state_frame_vect)
+            value_ext = value_ext.cpu().detach().numpy()
+            value_int = value_int.cpu().detach().numpy()
             for rd_ext, rd_int in zip(reward_ext[::-1], reward_int[::-1]):
                 value_ext = rd_ext + value_ext * self.reward_dc_ext
                 value_int = rd_int + value_int * self.reward_dc_int
@@ -161,31 +182,49 @@ class PPO:
             print("advantage is nan")
         return advantage
 
-    def gae_adv(self, state_pixel, state_vect, reward_step, last_val):
+    def gae_adv(self, state_pixel, state_vect, rwd_ext, rwd_int, last_val_ext, last_val_int):
         with torch.no_grad():
             value_ext, value_int = self.v(state_pixel, state_vect)
-            critic_value_ = torch.cat([critic_value_, last_val.reshape(-1, 1)], dim=0)
+            value_ext = torch.cat([value_ext, last_val_ext.reshape(-1, 1)], dim=0)
+            value_int = torch.cat([value_int, last_val_int.reshape(-1, 1)], dim=0)
 
-            assert reward_step.shape == critic_value_.shape
-            td_error = reward_step[:-1, ...] + self.decay_index * critic_value_[1:, ...] - critic_value_[:-1, ...]
-            td_error = td_error.cpu().numpy()
+            assert rwd_ext.shape == value_ext.shape
+            assert rwd_int.shape == value_int.shape
+            # 计算内部奖励advantage
+            td_error_ext = rwd_ext[:-1, ...] + self.reward_dc_ext * value_ext[1:, ...] - value_ext[:-1, ...]
+            td_error_ext = td_error_ext.cpu().numpy()
+            # 计算外部奖励advantage
+            td_error_int = rwd_int[:-1, ...] + self.reward_dc_int * value_int[1:, ...] - value_int[:-1, ...]
+            td_error_int = td_error_int.cpu().numpy()
 
-            gae_advantage = signal.lfilter([1], [1, -self.decay_index*self.lamda], td_error[::-1, ...], axis=0)[::-1, ...]
+            # 计算内部奖励gae
+            gae_ext = signal.lfilter([1], [1, -self.reward_dc_ext*self.lamda], td_error_ext[::-1, ...], axis=0)[::-1, ...]
+            # 计算外部奖励gae
+            gae_int = signal.lfilter([1], [1, -self.reward_dc_int*self.lamda], td_error_int[::-1, ...], axis=0)[::-1, ...]
+
             """！！！以下代码结构需做优化！！！"""
-            gae_advantage = torch.Tensor(gae_advantage.copy()).to(self.device)
-        return gae_advantage
+            gae_ext = torch.Tensor(gae_ext.copy()).to(self.device)
+            gae_int = torch.Tensor(gae_int.copy()).to(self.device)
+        return gae_ext, gae_int
 
     # 计算critic更新用的 Q(s, a)和 V(s)
-    def critic_update(self, pixel_state, vect_state, d_reward_):
-        q_value = d_reward_.squeeze(-1).to(self.device)
-        q_value = q_value[..., None]
+    def critic_update(self, pixel_state, vect_state, d_rwd_ext, d_rwd_int):
+        q_val_ext = d_rwd_ext.squeeze(-1).to(self.device)
+        q_val_int = d_rwd_int.squeeze(-1).to(self.device)
+        q_val_ext = q_val_ext[..., None]
+        q_val_int = q_val_int[..., None]
 
-        target_value = self.v(pixel_state, vect_state).squeeze(-1)
-        target_value = target_value[..., None]
+        val_ext, val_int = self.v(pixel_state, vect_state)
+        val_ext = val_ext.squeeze(-1)[..., None]
+        val_int = val_int.squeeze(-1)[..., None]
         self.c_opt.zero_grad()
-        assert target_value.shape == q_value.shape
-        critic_loss = self.c_loss(target_value, q_value)
-        self.history_critic = critic_loss.detach().item()
+
+        assert q_val_ext.shape == val_ext.shape
+        assert q_val_int.shape == val_int.shape
+        critic_ext_loss = self.c_loss(val_ext, q_val_ext)
+        critic_int_loss = self.c_loss(val_int, q_val_int)
+        critic_loss = critic_ext_loss + critic_int_loss
+        self.history_critic = critic_loss.cpu().detach().item()
         critic_loss.backward()
         torch.nn.utils.clip_grad_value_(self.v.parameters(), clip_value=100)
         self.c_opt.step()
@@ -215,22 +254,22 @@ class PPO:
         try:
             actor_loss.backward()
         except RuntimeError as e:
-            print('Expbackward dettected!!!')
+            print('Exp backward detected!!!')
         torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=1, norm_type=2)
 
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
 
-    def calculate_intrinsic_reward(self, pixel_state, vect_state, device):
-        pixel_state = torch.FloatTensor(pixel_state).to(device)
-        vect_state = torch.FloatTensor(vect_state).to(device)
+    def calculate_intrinsic_reward(self, pixel_state, vect_state):
+        pixel_state = torch.FloatTensor(pixel_state).to(self.device)
+        vect_state = torch.FloatTensor(vect_state).to(self.device)
         self.rnd.eval()
         target_feature, predict_feature = self.rnd(pixel_state, vect_state)
-        intrinsic_reward = torch.functional.mse_loss(target_feature, predict_feature, reduction='sum')
-        return intrinsic_reward.cpu()
+        intrinsic_reward = (target_feature - predict_feature).pow(2).sum(-1) / 2
+        return intrinsic_reward.cpu().detach().numpy()
 
     # 用于获取单幕中用于更新actor和critic的advantage和reward_sum
-    def get_trjt(self, last_pixel, last_vect, done, main_device):
+    def get_trjt(self, last_pixel, last_vect, done):
         pixel_state, vect_state, action, reward_ext, logprob_nstep, next_pixel_state, next_vect_state = zip(*self.memory)
         pixel_state = np.concatenate(pixel_state, axis=0)
         vect_state = np.concatenate(vect_state, axis=0)
@@ -240,39 +279,61 @@ class PPO:
         next_pixel_state = np.concatenate(next_pixel_state, axis=0)
         next_vect_state = np.concatenate(next_vect_state, axis=0)
 
+        # tensor 类型转换
+        pixel_state = torch.Tensor(pixel_state)
+        vect_state = torch.Tensor(vect_state)
+        action = torch.FloatTensor(action)
+        logprob_nstep = torch.FloatTensor(logprob_nstep)
+
+        """*********************** 需要格式审查 ***********************"""
+
         # intrinsic reward计算
-        intrinsic_reward = self.calculate_intrinsic_reward(next_pixel_state, next_vect_state, main_device)
+        self.staterms.update(next_pixel_state)
+        self.vectrms.update(next_vect_state)
+        next_pixel_state = np.clip(((next_pixel_state - self.staterms.mean) / np.sqrt(self.staterms.var)), -5, 5)
+        next_vect_state = np.clip(((next_vect_state - self.vectrms.mean) / np.sqrt(self.vectrms.var)), -5, 5)
+        intrinsic_reward = self.calculate_intrinsic_reward(next_pixel_state, next_vect_state)
+        mean, std, count = intrinsic_reward.mean(), intrinsic_reward.std(), intrinsic_reward.shape[0]
+        self.rwd_rms.update_from_moments(mean, std ** 2, count)
+        internal_reward = (intrinsic_reward - self.rwd_rms.mean) / np.sqrt(self.rwd_rms.var)
 
         # ext reward计算
         discount_rd_ext, discount_rd_int = self.decayed_reward((last_pixel, last_vect), reward_ext, intrinsic_reward)
 
         # 计算最后一个状态的内在回报和外在回报
-        with torch.no_grad():
-            last_frame_pixel = torch.Tensor(last_pixel)
-            last_frame_vect = torch.Tensor(last_vect)
-            last_val_ext, last_val_int = self.v(last_frame_pixel, last_frame_vect)
-
-        pixel_state = torch.Tensor(pixel_state)
-        vect_state = torch.Tensor(vect_state)
-        action = torch.FloatTensor(action)
-        logprob_nstep = torch.FloatTensor(logprob_nstep)
-        reward_nstep = reward_nstep.reshape(-1, 1)
         if done:
             last_val_ext = last_val_int = torch.zeros((1, 1))
+        else:
+            with torch.no_grad():
+                last_frame_pixel = torch.Tensor(last_pixel)
+                last_frame_vect = torch.Tensor(last_vect)
+                last_val_ext, last_val_int = self.v(last_frame_pixel, last_frame_vect)
+
         try:
-            reward = torch.FloatTensor(reward_nstep)
-            reward = torch.cat((reward, last_val), dim=0)
+            reward_ext = torch.FloatTensor(reward_ext).reshape(-1, 1)
+            reward_int = torch.FloatTensor(intrinsic_reward).reshape(-1, 1)
+            reward_ext = torch.cat((reward_ext, last_val_ext), dim=0)
+            reward_int = torch.cat((reward_int, last_val_int), dim=0)
         except TypeError as e:
             print('reward error')
 
         # 用于计算critic损失/原始advantage
-        d_reward = torch.Tensor(np.concatenate(discount_reward).reshape(-1, 1))
+        d_rwd_ext = torch.Tensor(np.concatenate(discount_rd_ext).reshape(-1, 1))
+        d_rwd_int = torch.Tensor(np.concatenate(discount_rd_int).reshape(-1, 1))
 
-        adv = self.gae_adv(pixel_state, vect_state, reward, last_val)
-        return pixel_state, vect_state, action, logprob_nstep, d_reward, adv
+        gae_ext, gae_int = self.gae_adv(state_pixel=pixel_state, state_vect=vect_state,
+                                        rwd_ext=reward_ext, rwd_int=reward_int,
+                                        last_val_ext=last_val_ext, last_val_int=last_val_int)
+        gae = gae_ext * self.extcoef + gae_int * self.intcoef
+        return pixel_state, vect_state, action, logprob_nstep, d_rwd_ext, d_rwd_int, gae, (next_pixel_state, next_vect_state)
 
     def update(self, buffer, args):
+        """这部分为了更新global进程中的staterms和vectrms，将本应在buffer中转化为tensor的next_state数据拿出来转换格式"""
         buffer.get_data(self.device)
+        self.staterms.update(buffer.next_state[0])
+        self.vectrms.update(buffer.next_state[1])
+        buffer.next_state = (torch.FloatTensor(buffer.next_state[0]).to(self.device),
+                             torch.FloatTensor(buffer.next_state[1]).to(self.device))
         indice = torch.randperm(args.max_timestep * args.worker_num).to(self.device)
         iter_times = args.max_timestep * args.worker_num//self.batch_size
         for i in range(args.max_timestep * args.worker_num//self.batch_size):
@@ -281,13 +342,18 @@ class PPO:
                 batch_pixel = torch.index_select(buffer.pixel_state, dim=0, index=batch_index)
                 batch_vect = torch.index_select(buffer.vect_state, dim=0, index=batch_index)
                 batch_action = torch.index_select(buffer.action, dim=0, index=batch_index)
-                batch_d_reward = torch.index_select(buffer.d_reward, dim=0, index=batch_index)
                 batch_logprob = torch.index_select(buffer.logprob, dim=0, index=batch_index)
+                batch_d_rwd_ext = torch.index_select(buffer.d_rwd_ext, dim=0, index=batch_index)
+                batch_d_rwd_int = torch.index_select(buffer.d_rwd_int, dim=0, index=batch_index)
                 batch_adv = torch.index_select(buffer.adv, dim=0, index=batch_index)
+                batch_next_pixel = torch.index_select(buffer.next_state[0], dim=0, index=batch_index)
+                batch_next_vect = torch.index_select(buffer.next_state[1], dim=0, index=batch_index)
+
             except IndexError as e:
                 print('index error')
             self.actor_update(batch_pixel, batch_vect, batch_action, batch_logprob, batch_adv)
-            self.critic_update(batch_pixel, batch_vect, batch_d_reward)
+            self.critic_update(batch_pixel, batch_vect, batch_d_rwd_ext, batch_d_rwd_int)
+            self.rnd.update((batch_next_pixel-self.staterms.mean)/np.sqrt(self.staterms.var), (batch_next_vect-self.vectrms.mean)/np.sqrt(self.vectrms.std))
             self.logger.add_scalar(tag='Loss/actor_loss',
                                    scalar_value=self.history_actor,
                                    global_step=self.ep * iter_times + i)

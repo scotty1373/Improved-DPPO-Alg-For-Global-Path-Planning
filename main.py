@@ -21,6 +21,9 @@ def parse_args():
     parser.add_argument('--epochs',
                         help='Training epoch',
                         default=2000)
+    parser.add_argument('--train',
+                        help='Train or not',
+                        default=True)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
                         default=False)
@@ -74,14 +77,15 @@ def main(args):
     # tensorboard初始化
     tb_logger = SummaryWriter(log_dir=f"./log/{TIMESTAMP}", flush_secs=120)
 
-    global_ppo = PPO(state_dim=args.frame_overlay * args.state_length,
+    global_ppo = PPO(frame_overlay=args.frame_overlay,
+                     state_length=args.state_length,
                      action_dim=2,
                      batch_size=args.batch_size,
                      overlay=args.frame_overlay,
                      device=device,
                      logger=tb_logger)
-    global_rnd = RNDModel(state_dim=args.frame_overlay * args.state_length,
-                          frame_overlay=args.frame_overlay)
+    global_rnd = RNDModel(state_length=args.state_length,
+                          device=device)
 
     # 是否从预训练结果中载入ckpt
     if args.pre_train:
@@ -92,7 +96,7 @@ def main(args):
     training_buffer = PPO_Buffer()
 
     pipe_r, pipe_w = zip(*[mp.Pipe() for _ in range(args.worker_num)])
-    worker_list = [worker(args, f'worker{i}', i, global_ppo.pi, global_ppo.v, pipe_w[i], TIMESTAMP) for i in range(args.worker_num)]
+    worker_list = [worker(args, f'worker{i}', i, global_ppo.pi, global_ppo.v, global_rnd, pipe_w[i], TIMESTAMP) for i in range(args.worker_num)]
     [worker_idx.start() for worker_idx in worker_list]
 
     epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')
@@ -108,8 +112,10 @@ def main(args):
                                               subprocess_buffer.vect_state,
                                               subprocess_buffer.action,
                                               subprocess_buffer.logprob,
-                                              subprocess_buffer.d_reward,
-                                              subprocess_buffer.adv)
+                                              subprocess_buffer.d_rwd_ext,
+                                              subprocess_buffer.d_rwd_int,
+                                              subprocess_buffer.adv,
+                                              subprocess_buffer.next_state)
             del subprocess_buffer
 
         # 参数更新
