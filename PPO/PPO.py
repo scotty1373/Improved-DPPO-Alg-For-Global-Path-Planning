@@ -126,8 +126,11 @@ class PPO:
         self.ep = 0
 
         # RND block
-        self.extcoef = 2.0
-        self.intcoef = 1.0
+        self.extcoef = 1.0
+        self.intcoef = 0.5
+        self.update_proportion = 0.25
+        self.rnd_loss_func = torch.nn.MSELoss(reduction='none')
+        self.rnd_opt = torch.optim.Adam(self.rnd.predict_structure.parameters(), lr=0.001)
         self.staterms = RunningMeanStd(shape=(1, 1, 80, 80))
         self.vectrms = RunningMeanStd(shape=(1, 3))
         self.rwd_rms = RunningMeanStd()
@@ -136,7 +139,7 @@ class PPO:
         self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
         self.v = CriticModel(state_dim, action_dim, overlay).to(device)
         self.memory = deque(maxlen=max_mem_len)
-        self.rnd = RNDModel(self.state_length, device).to(device)
+        self.rnd = RNDModel(self.state_length).to(device)
 
     def get_action(self, obs_):
         pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(obs_[0])).to(self.device), torch.Tensor(copy.deepcopy(obs_[1])).to(self.device)
@@ -260,12 +263,29 @@ class PPO:
         self.a_opt.step()
         self.history_actor = actor_loss.detach().item()
 
+    def rnd_update(self, pixel, vect):
+        target_vect, predict_vect = self.rnd(pixel, vect)
+        target_vect = target_vect.detach()
+        self.rnd_opt.zero_grad()
+        loss = self.rnd_loss_func(predict_vect, target_vect).mean(-1)
+        # Proportion of exp used for predictor update
+        """from the RND pytorch complete code"""
+        """https://github.com/jcwleo/random-network-distillation-pytorch/blob/e383fb95177c50bfdcd81b43e37c443c8cde1d94/agents.py"""
+        # mask = torch.rand(len(loss)).to(self.device)
+        # mask = (mask < self.update_proportion).to(self.device)
+        # loss = (loss * mask).sum() / torch.max(mask.sum(), torch.Tensor([1]).to(self.device))
+        loss.backward()
+        # 未做梯度裁剪
+        self.rnd_opt.step()
+        return loss.cpu().detach().numpy()
+
     def calculate_intrinsic_reward(self, pixel_state, vect_state):
         pixel_state = torch.FloatTensor(pixel_state).to(self.device)
         vect_state = torch.FloatTensor(vect_state).to(self.device)
         self.rnd.eval()
         target_feature, predict_feature = self.rnd(pixel_state, vect_state)
         intrinsic_reward = (target_feature - predict_feature).pow(2).sum(-1) / 2
+        self.rnd.train()
         return intrinsic_reward.cpu().detach().numpy()
 
     # 用于获取单幕中用于更新actor和critic的advantage和reward_sum
@@ -295,7 +315,7 @@ class PPO:
         intrinsic_reward = self.calculate_intrinsic_reward(next_pixel_state, next_vect_state)
         mean, std, count = intrinsic_reward.mean(), intrinsic_reward.std(), intrinsic_reward.shape[0]
         self.rwd_rms.update_from_moments(mean, std ** 2, count)
-        internal_reward = (intrinsic_reward - self.rwd_rms.mean) / np.sqrt(self.rwd_rms.var)
+        intrinsic_reward = (intrinsic_reward - self.rwd_rms.mean) / np.sqrt(self.rwd_rms.var)
 
         # ext reward计算
         discount_rd_ext, discount_rd_int = self.decayed_reward((last_pixel, last_vect), reward_ext, intrinsic_reward)
@@ -325,13 +345,13 @@ class PPO:
                                         rwd_ext=reward_ext, rwd_int=reward_int,
                                         last_val_ext=last_val_ext, last_val_int=last_val_int)
         gae = gae_ext * self.extcoef + gae_int * self.intcoef
-        return pixel_state, vect_state, action, logprob_nstep, d_rwd_ext, d_rwd_int, gae, (next_pixel_state, next_vect_state)
+        return pixel_state, vect_state, action, logprob_nstep, d_rwd_ext, d_rwd_int, gae, (next_pixel_state, next_vect_state), intrinsic_reward
 
     def update(self, buffer, args):
         """这部分为了更新global进程中的staterms和vectrms，将本应在buffer中转化为tensor的next_state数据拿出来转换格式"""
         buffer.get_data(self.device)
-        self.staterms.update(buffer.next_state[0])
-        self.vectrms.update(buffer.next_state[1])
+        # self.staterms.update(buffer.next_state[0])
+        # self.vectrms.update(buffer.next_state[1])
         buffer.next_state = (torch.FloatTensor(buffer.next_state[0]).to(self.device),
                              torch.FloatTensor(buffer.next_state[1]).to(self.device))
         indice = torch.randperm(args.max_timestep * args.worker_num).to(self.device)
@@ -353,12 +373,17 @@ class PPO:
                 print('index error')
             self.actor_update(batch_pixel, batch_vect, batch_action, batch_logprob, batch_adv)
             self.critic_update(batch_pixel, batch_vect, batch_d_rwd_ext, batch_d_rwd_int)
-            self.rnd.update((batch_next_pixel-self.staterms.mean)/np.sqrt(self.staterms.var), (batch_next_vect-self.vectrms.mean)/np.sqrt(self.vectrms.std))
+            # self.rnd.update((batch_next_pixel-torch.FloatTensor(self.staterms.mean).to(self.device))/torch.FloatTensor(np.sqrt(self.staterms.var)).to(self.device),
+            #                 (batch_next_vect-torch.FloatTensor(self.vectrms.mean).to(self.device)/torch.FloatTensor(np.sqrt(self.vectrms.var)).to(self.device)))
+            loss_rnd = self.rnd_update(batch_next_pixel, batch_next_vect)
             self.logger.add_scalar(tag='Loss/actor_loss',
                                    scalar_value=self.history_actor,
                                    global_step=self.ep * iter_times + i)
             self.logger.add_scalar(tag='Loss/critic_loss',
                                    scalar_value=self.history_critic,
+                                   global_step=self.ep * iter_times + i)
+            self.logger.add_scalar(tag='Loss/rnd_loss',
+                                   scalar_value=loss_rnd,
                                    global_step=self.ep * iter_times + i)
         buffer.cleanup()
 

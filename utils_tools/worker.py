@@ -45,7 +45,7 @@ class worker(mp.Process):
         tb_logger = SummaryWriter(log_dir=f"./log/{self.tb_logger}", flush_secs=120)
 
         # 环境与agent初始化
-        env = RoutePlan(barrier_num=3)
+        env = RoutePlan(barrier_num=3, seed=seed)
         # env.seed(13)
         env = SkipEnvFrame(env, args.frame_skipping)
         assert isinstance(args.batch_size, int)
@@ -119,7 +119,7 @@ class worker(mp.Process):
                     agent.state_store_memory(pixel_obs, obs, act, reward, logprob, next_pixel_state, next_vect_state)
                     # 防止最后一次数据未被存储进buffer
                     if done or t == args.max_timestep - 1:
-                        pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state = agent.get_trjt(pixel_obs_t1, obs_t1, done)
+                        pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state, _ = agent.get_trjt(pixel_obs_t1, obs_t1, done)
                         buffer.collect_trajorbatch(pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state)
                         agent.memory.clear()
                         done = True
@@ -144,10 +144,10 @@ class worker(mp.Process):
 
                 trace_history.append(tuple(trace_trans(env.env.ship.position)))
 
-            """管道发送buffer，并清空buffer"""
-            self.pipe_line.send(buffer)
             # 从global取回参数
             self.pull_from_global(agent)
+            """管道发送buffer，并清空buffer"""
+            self.pipe_line.send(buffer)
 
             ep_history.append(reward_history)
             log_ep_text = {'epochs': epoch,

@@ -84,8 +84,7 @@ def main(args):
                      overlay=args.frame_overlay,
                      device=device,
                      logger=tb_logger)
-    global_rnd = RNDModel(state_length=args.state_length,
-                          device=device)
+    global_rnd = RNDModel(state_length=args.state_length)
 
     # 是否从预训练结果中载入ckpt
     if args.pre_train:
