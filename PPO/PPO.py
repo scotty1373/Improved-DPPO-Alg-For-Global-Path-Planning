@@ -15,7 +15,7 @@ import copy
 LEARNING_RATE_ACTOR = 1e-5
 LEARNING_RATE_CRITIC = 5e-5
 DECAY = 0.98
-EPILSON = 0.2
+EPILSON = 0.1
 max_mem_len = 512
 
 
@@ -112,8 +112,7 @@ class PPO:
         self.reward_dc_int = 0.99
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
-        self.clip_ratio = 0.2
-        self.lamda = 0.98
+        self.lamda = 0.95
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
         self.c_sch = torch.optim.lr_scheduler.StepLR(self.c_opt, step_size=500, gamma=0.1)
@@ -133,7 +132,8 @@ class PPO:
         self.rnd_opt = torch.optim.Adam(self.rnd.predict_structure.parameters(), lr=0.001)
         self.staterms = RunningMeanStd(shape=(1, 1, 80, 80))
         self.vectrms = RunningMeanStd(shape=(1, 3))
-        self.rwd_rms = RunningMeanStd()
+        self.rwd_int_rms = RunningMeanStd()
+        self.rwd_ext_rms = RunningMeanStd()
 
     def _init(self, state_dim, action_dim, overlay, device):
         self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
@@ -271,9 +271,9 @@ class PPO:
         # Proportion of exp used for predictor update
         """from the RND pytorch complete code"""
         """https://github.com/jcwleo/random-network-distillation-pytorch/blob/e383fb95177c50bfdcd81b43e37c443c8cde1d94/agents.py"""
-        # mask = torch.rand(len(loss)).to(self.device)
-        # mask = (mask < self.update_proportion).to(self.device)
-        # loss = (loss * mask).sum() / torch.max(mask.sum(), torch.Tensor([1]).to(self.device))
+        mask = torch.rand(len(loss)).to(self.device)
+        mask = (mask < self.update_proportion).to(self.device)
+        loss = (loss * mask).sum() / torch.max(mask.sum(), torch.Tensor([1]).to(self.device))
         loss.backward()
         # 未做梯度裁剪
         self.rnd_opt.step()
@@ -314,10 +314,15 @@ class PPO:
         next_vect_state = np.clip(((next_vect_state - self.vectrms.mean) / np.sqrt(self.vectrms.var)), -5, 5)
         intrinsic_reward = self.calculate_intrinsic_reward(next_pixel_state, next_vect_state)
         mean, std, count = intrinsic_reward.mean(), intrinsic_reward.std(), intrinsic_reward.shape[0]
-        self.rwd_rms.update_from_moments(mean, std ** 2, count)
-        intrinsic_reward = (intrinsic_reward - self.rwd_rms.mean) / np.sqrt(self.rwd_rms.var)
+        self.rwd_int_rms.update_from_moments(mean, std ** 2, count)
+        intrinsic_reward = (intrinsic_reward - self.rwd_int_rms.mean) / np.sqrt(self.rwd_int_rms.var)
 
         # ext reward计算
+        mean, std, count = reward_ext.mean(), reward_ext.std(), reward_ext.shape[0]
+        self.rwd_ext_rms.update_from_moments(mean, std ** 2, count)
+        reward_ext = (reward_ext - self.rwd_ext_rms.mean) / np.sqrt(self.rwd_ext_rms.var)
+
+        # discount reward计算
         discount_rd_ext, discount_rd_int = self.decayed_reward((last_pixel, last_vect), reward_ext, intrinsic_reward)
 
         # 计算最后一个状态的内在回报和外在回报

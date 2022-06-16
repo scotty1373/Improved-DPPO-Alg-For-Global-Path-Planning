@@ -44,9 +44,14 @@ PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # ship
 
 RAY_CAST_LASER_NUM = 24
 
-SHIP_POLY = [
+SHIP_POLY_BP = [
     (-5, +8), (-5, -8), (0, -8),
     (+8, -6), (+8, +6), (0, +8)
+    ]
+
+SHIP_POLY = [
+    (-10, +16), (-10, -16), (0, -16),
+    (+16, -12), (+16, +12), (0, +16)
     ]
 
 RECH_RECT = [
@@ -128,7 +133,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 障碍物生成边界
         self.barrier_bound = 0.6
         self.dead_area_bound = 0.03
-        self.ship_radius = 0.36
+        self.ship_radius = 0.36*2
 
         # game状态记录
         self.game_over = None
