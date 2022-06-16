@@ -90,6 +90,7 @@ class worker(mp.Process):
             reward_history = 0
             entropy_acc_history = 0
             entropy_ori_history = 0
+            int_reward_history = 0
             buffer = PPO_Buffer()
             """***********这部分作为重置并没有起到训练连接的作用， 可删除if判断***********"""
             if done:
@@ -119,8 +120,12 @@ class worker(mp.Process):
                     agent.state_store_memory(pixel_obs, obs, act, reward, logprob, next_pixel_state, next_vect_state)
                     # 防止最后一次数据未被存储进buffer
                     if done or t == args.max_timestep - 1:
-                        pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state, _ = agent.get_trjt(pixel_obs_t1, obs_t1, done)
-                        buffer.collect_trajorbatch(pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state)
+                        pixel_state, vect_state, action, logprob, d_rwd_ext, d_rwd_int, gae, next_state, int_rwd = agent.get_trjt(pixel_obs_t1, obs_t1, done)
+                        int_rwd = int_rwd.sum()
+                        int_reward_history += int_rwd
+                        buffer.collect_trajorbatch(pixel_state, vect_state,
+                                                   action, logprob, d_rwd_ext,
+                                                   d_rwd_int, gae, next_state)
                         agent.memory.clear()
                         done = True
 
@@ -159,6 +164,9 @@ class worker(mp.Process):
             # tensorboard logger
             tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_reward',
                                  scalar_value=reward_history,
+                                 global_step=epoch)
+            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_int_reward',
+                                 scalar_value=int_reward_history,
                                  global_step=epoch)
             tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_acc',
                                  scalar_value=log_ep_text["entropy_acc_mean"],
