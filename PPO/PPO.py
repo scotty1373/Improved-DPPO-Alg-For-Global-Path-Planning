@@ -60,6 +60,8 @@ class PPO_Buffer:
         self.adv = torch.cat(self.adv, dim=0).to(device)
         self.next_state = (np.concatenate([pixel[0] for pixel in self.next_state], axis=0),
                            np.concatenate([pixel[1] for pixel in self.next_state], axis=0))
+        self.next_state = (torch.FloatTensor(self.next_state[0]).to(self.device),
+                           torch.FloatTensor(self.next_state[1]).to(self.device))
 
     def cleanup(self):
         self.pixel_state = []
@@ -93,7 +95,7 @@ class SkipEnvFrame(gym.Wrapper):
 
 
 class PPO:
-    def __init__(self, frame_overlay, state_length, action_dim, batch_size, overlay, device, logger=None):
+    def __init__(self, frame_overlay, state_length, action_dim, batch_size, overlay, device, logger=None, root=True):
         self.state_length = state_length
         self.state_dim = frame_overlay * state_length
         self.action_dim = action_dim
@@ -101,6 +103,9 @@ class PPO:
         self.frame_overlay = overlay
         self.device = device
         self.logger = logger
+
+        # [todo] 父进程标识符
+        self.root = root
 
         # model build
         self._init(self.state_dim, self.action_dim, self.frame_overlay, self.device)
@@ -129,7 +134,7 @@ class PPO:
         self.intcoef = 0.5
         self.update_proportion = 0.25
         self.rnd_loss_func = torch.nn.MSELoss(reduction='none')
-        self.rnd_opt = torch.optim.Adam(self.rnd.predict_structure.parameters(), lr=0.001)
+        self.rnd_opt = torch.optim.Adam(self.rnd.predict_structure.parameters(), lr=0.0001)
         self.staterms = RunningMeanStd(shape=(1, 1, 80, 80))
         self.vectrms = RunningMeanStd(shape=(1, 3))
         self.rwd_int_rms = RunningMeanStd()
@@ -205,7 +210,7 @@ class PPO:
             # 计算外部奖励gae
             gae_int = signal.lfilter([1], [1, -self.reward_dc_int*self.lamda], td_error_int[::-1, ...], axis=0)[::-1, ...]
 
-            """！！！以下代码结构需做优化！！！"""
+            # [todo]！！！以下代码结构需做优化！！！
             gae_ext = torch.Tensor(gae_ext.copy()).to(self.device)
             gae_int = torch.Tensor(gae_int.copy()).to(self.device)
         return gae_ext, gae_int
@@ -238,7 +243,7 @@ class PPO:
 
         pi_entropy = pi_dist.entropy().mean(dim=1).detach()
 
-        """是否需要增加kl散度监视？？？"""
+        # [todo] 需要增加KL散度计算
 
         assert logprob.shape == logprob_old.shape
         ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
@@ -305,8 +310,6 @@ class PPO:
         action = torch.FloatTensor(action)
         logprob_nstep = torch.FloatTensor(logprob_nstep)
 
-        """*********************** 需要格式审查 ***********************"""
-
         # intrinsic reward计算
         self.staterms.update(next_pixel_state)
         self.vectrms.update(next_vect_state)
@@ -353,12 +356,7 @@ class PPO:
         return pixel_state, vect_state, action, logprob_nstep, d_rwd_ext, d_rwd_int, gae, (next_pixel_state, next_vect_state), intrinsic_reward
 
     def update(self, buffer, args):
-        """这部分为了更新global进程中的staterms和vectrms，将本应在buffer中转化为tensor的next_state数据拿出来转换格式"""
         buffer.get_data(self.device)
-        # self.staterms.update(buffer.next_state[0])
-        # self.vectrms.update(buffer.next_state[1])
-        buffer.next_state = (torch.FloatTensor(buffer.next_state[0]).to(self.device),
-                             torch.FloatTensor(buffer.next_state[1]).to(self.device))
         indice = torch.randperm(args.max_timestep * args.worker_num).to(self.device)
         iter_times = args.max_timestep * args.worker_num//self.batch_size
         for i in range(args.max_timestep * args.worker_num//self.batch_size):
@@ -373,13 +371,10 @@ class PPO:
                 batch_adv = torch.index_select(buffer.adv, dim=0, index=batch_index)
                 batch_next_pixel = torch.index_select(buffer.next_state[0], dim=0, index=batch_index)
                 batch_next_vect = torch.index_select(buffer.next_state[1], dim=0, index=batch_index)
-
             except IndexError as e:
                 print('index error')
             self.actor_update(batch_pixel, batch_vect, batch_action, batch_logprob, batch_adv)
             self.critic_update(batch_pixel, batch_vect, batch_d_rwd_ext, batch_d_rwd_int)
-            # self.rnd.update((batch_next_pixel-torch.FloatTensor(self.staterms.mean).to(self.device))/torch.FloatTensor(np.sqrt(self.staterms.var)).to(self.device),
-            #                 (batch_next_vect-torch.FloatTensor(self.vectrms.mean).to(self.device)/torch.FloatTensor(np.sqrt(self.vectrms.var)).to(self.device)))
             loss_rnd = self.rnd_update(batch_next_pixel, batch_next_vect)
             self.logger.add_scalar(tag='Loss/actor_loss',
                                    scalar_value=self.history_actor,

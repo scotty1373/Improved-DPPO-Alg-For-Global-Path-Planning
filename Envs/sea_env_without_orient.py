@@ -49,9 +49,14 @@ SHIP_POLY_BP = [
     (+8, -6), (+8, +6), (0, +8)
     ]
 
+element_wise_weight = 1.5
 SHIP_POLY = [
-    (-10, +16), (-10, -16), (0, -16),
-    (+16, -12), (+16, +12), (0, +16)
+    (SHIP_POLY_BP[0][0]*element_wise_weight, SHIP_POLY_BP[0][1]*element_wise_weight),
+    (SHIP_POLY_BP[1][0]*element_wise_weight, SHIP_POLY_BP[1][1]*element_wise_weight),
+    (SHIP_POLY_BP[2][0]*element_wise_weight, SHIP_POLY_BP[2][1]*element_wise_weight),
+    (SHIP_POLY_BP[3][0]*element_wise_weight, SHIP_POLY_BP[3][1]*element_wise_weight),
+    (SHIP_POLY_BP[4][0]*element_wise_weight, SHIP_POLY_BP[4][1]*element_wise_weight),
+    (SHIP_POLY_BP[5][0]*element_wise_weight, SHIP_POLY_BP[5][1]*element_wise_weight)
     ]
 
 RECH_RECT = [
@@ -133,7 +138,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 障碍物生成边界
         self.barrier_bound = 0.6
         self.dead_area_bound = 0.03
-        self.ship_radius = 0.36*2
+        self.ship_radius = 0.36*element_wise_weight
 
         # game状态记录
         self.game_over = None
