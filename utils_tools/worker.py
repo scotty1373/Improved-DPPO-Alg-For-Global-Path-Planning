@@ -45,7 +45,7 @@ class worker(mp.Process):
         tb_logger = SummaryWriter(log_dir=f"./log/{self.tb_logger}", flush_secs=120)
 
         # 环境与agent初始化
-        env = RoutePlan(barrier_num=3, seed=seed)
+        env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True, worker_id=self.workerID)
         # env.seed(13)
         env = SkipEnvFrame(env, args.frame_skipping)
         assert isinstance(args.batch_size, int)

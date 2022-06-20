@@ -49,7 +49,11 @@ SHIP_POLY_BP = [
     (+8, -6), (+8, +6), (0, +8)
     ]
 
-element_wise_weight = 1.5
+SHIP_POSITION = [(-6.5, 8), (0, 1.5), (-6.5, 1.5),
+                 (6.5, 8), (6.5, 14.5), (-6.5, 14.5),
+                 (0, 14.5), (-6.5, 1.5)]
+
+element_wise_weight = 1.2
 SHIP_POLY = [
     (SHIP_POLY_BP[0][0]*element_wise_weight, SHIP_POLY_BP[0][1]*element_wise_weight),
     (SHIP_POLY_BP[1][0]*element_wise_weight, SHIP_POLY_BP[1][1]*element_wise_weight),
@@ -121,11 +125,13 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
         self.seed_num = seed
+        self.ship_pos_fixed = ship_pos_fixed
+        self.worker_id = worker_id
 
         self.world = Box2D.b2World(gravity=(0, 0))
         self.barrier = []
@@ -231,14 +237,17 @@ class RoutePlan(gym.Env, EzPickle):
 
         """ship生成"""
         """!!!   已验证   !!!"""
-        if self.seed_num is not None:
-            self.np_random.seed(self.seed_num)
-        initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
-                                                    -W * self.barrier_bound / 2)
-        if self.seed_num is not None:
-            self.np_random.seed(self.seed_num)
-        initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
-                                                    H * (1 - self.dead_area_bound))
+        if self.ship_pos_fixed is None:
+            if self.seed_num is not None:
+                self.np_random.seed(self.seed_num)
+            initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
+                                                        -W * self.barrier_bound / 2)
+            if self.seed_num is not None:
+                self.np_random.seed(self.seed_num)
+            initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
+                                                        H * (1 - self.dead_area_bound))
+        else:
+            initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], SHIP_POSITION[self.worker_id][1]
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
