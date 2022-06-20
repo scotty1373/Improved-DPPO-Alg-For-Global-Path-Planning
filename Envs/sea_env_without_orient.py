@@ -408,7 +408,7 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         if self.dist_record is not None and self.dist_record <= end_info.distance:
-            reward_dist = -3
+            reward_dist = -1
         else:
             reward_dist = 1
             self.dist_record = end_info.distance
@@ -424,7 +424,7 @@ class RoutePlan(gym.Env, EzPickle):
                 reward = 100
                 done = True
             elif self.ground_contect:
-                reward = -1000
+                reward = -100
                 done = True
             else:
                 reward = -10

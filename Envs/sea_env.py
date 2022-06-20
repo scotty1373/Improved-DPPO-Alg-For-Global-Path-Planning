@@ -232,7 +232,7 @@ class RoutePlan(gym.Env, EzPickle):
             linearDamping=20,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=10.0,
+                density=7.0,
                 friction=12,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground

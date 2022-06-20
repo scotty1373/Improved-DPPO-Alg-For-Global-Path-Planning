@@ -60,8 +60,8 @@ class PPO_Buffer:
         self.adv = torch.cat(self.adv, dim=0).to(device)
         self.next_state = (np.concatenate([pixel[0] for pixel in self.next_state], axis=0),
                            np.concatenate([pixel[1] for pixel in self.next_state], axis=0))
-        self.next_state = (torch.FloatTensor(self.next_state[0]).to(self.device),
-                           torch.FloatTensor(self.next_state[1]).to(self.device))
+        self.next_state = (torch.FloatTensor(self.next_state[0]).to(device),
+                           torch.FloatTensor(self.next_state[1]).to(device))
 
     def cleanup(self):
         self.pixel_state = []
