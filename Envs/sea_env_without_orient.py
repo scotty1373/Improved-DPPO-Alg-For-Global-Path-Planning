@@ -49,7 +49,7 @@ SHIP_POLY_BP = [
     (+8, -6), (+8, +6), (0, +8)
     ]
 
-SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5), (6.5, 8),
+SHIP_POSITION = [(6.5, 14.5), (-6.5, 8), (-6.5, 1.5), (6.5, 8),
                  (6.5, 14.5), (-6.5, 14.5),
                  (0, 14.5), (-6.5, 1.5)]
 
@@ -292,7 +292,7 @@ class RoutePlan(gym.Env, EzPickle):
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map += heat_map_init.ground_rewardCal
+        # self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
         # import matplotlib.pyplot as plt
         # import seaborn as sns
@@ -399,10 +399,9 @@ class RoutePlan(gym.Env, EzPickle):
         # assert len(state) == 6
         state = [
             end_info.distance,
-            vel_scalar,
             end_ori/b2_pi
         ]
-        assert len(state) == 3
+        assert len(state) == 2
 
         """Reward 计算"""
         done = False
@@ -423,7 +422,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist + reward_vel
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
         # print(f'reward_heat:{reward_shaping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态

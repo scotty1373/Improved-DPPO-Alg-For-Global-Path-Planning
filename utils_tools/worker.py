@@ -116,7 +116,7 @@ class worker(mp.Process):
                 if args.train:
                     # 状态存储
                     next_pixel_state = pixel_obs_t1[:, 0, ...][:, None, ...]
-                    next_vect_state = obs_t1[:, :3]
+                    next_vect_state = obs_t1[:, :args.state_length]
                     agent.state_store_memory(pixel_obs, obs, act, reward, logprob, next_pixel_state, next_vect_state)
                     # 防止最后一次数据未被存储进buffer
                     if done or t == args.max_timestep - 1:

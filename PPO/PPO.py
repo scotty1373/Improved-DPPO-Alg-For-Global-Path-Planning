@@ -136,9 +136,9 @@ class PPO:
         self.rnd_loss_func = torch.nn.MSELoss(reduction='none')
         self.rnd_opt = torch.optim.Adam(self.rnd.predict_structure.parameters(), lr=0.0001)
         self.staterms = RunningMeanStd(shape=(1, 1, 80, 80))
-        self.vectrms = RunningMeanStd(shape=(1, 3))
-        self.overlay_state_rms = RunningMeanStd(shape=(1, self.frame_overlay, 80, 80))
-        self.overlay_vect_rms = RunningMeanStd(shape=(1, self.state_length*self.frame_overlay))
+        self.vectrms = RunningMeanStd(shape=(1, self.state_length))
+        # self.overlay_state_rms = RunningMeanStd(shape=(1, self.frame_overlay, 80, 80))
+        # self.overlay_vect_rms = RunningMeanStd(shape=(1, self.state_length*self.frame_overlay))
         self.rwd_int_rms = RunningMeanStd()
         self.rwd_ext_rms = RunningMeanStd()
 
@@ -149,9 +149,9 @@ class PPO:
         self.rnd = RNDModel(self.state_length).to(device)
 
     def get_action(self, obs_):
-        pixel_obs_ = (obs_[0] - self.overlay_state_rms.mean) / np.sqrt(self.overlay_state_rms.var)
-        obs_ = (obs_[1] - self.overlay_vect_rms.mean) / np.sqrt(self.overlay_vect_rms.var)
-        pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(pixel_obs_)).to(self.device), torch.Tensor(copy.deepcopy(obs_)).to(self.device)
+        # pixel_obs_ = (obs_[0] - self.overlay_state_rms.mean) / np.sqrt(self.overlay_state_rms.var)
+        # obs_ = (obs_[1] - self.overlay_vect_rms.mean) / np.sqrt(self.overlay_vect_rms.var)
+        pixel_obs_, obs_ = torch.Tensor(copy.deepcopy(obs_[0])).to(self.device), torch.Tensor(copy.deepcopy(obs_[1])).to(self.device)
 
         self.pi.eval()
         with torch.no_grad():
@@ -309,10 +309,10 @@ class PPO:
         next_vect_state = np.concatenate(next_vect_state, axis=0)
 
         # state vect rms
-        self.overlay_state_rms.update(pixel_state)
-        self.overlay_vect_rms.update(vect_state)
-        pixel_state = (pixel_state - self.overlay_state_rms.mean) / np.sqrt(self.overlay_state_rms.var)
-        vect_state = (vect_state - self.overlay_vect_rms.mean) / np.sqrt(self.overlay_vect_rms.var)
+        # self.overlay_state_rms.update(pixel_state)
+        # self.overlay_vect_rms.update(vect_state)
+        # pixel_state = (pixel_state - self.overlay_state_rms.mean) / np.sqrt(self.overlay_state_rms.var)
+        # vect_state = (vect_state - self.overlay_vect_rms.mean) / np.sqrt(self.overlay_vect_rms.var)
 
         # tensor 类型转换
         pixel_state = torch.Tensor(pixel_state)
