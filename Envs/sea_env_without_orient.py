@@ -317,57 +317,56 @@ class RoutePlan(gym.Env, EzPickle):
         # 获取力量点位置
         force2position = self.ship.GetWorldPoint(localPoint=(0, 0))
 
-        # 取余操作在对负数取余时，在Python当中,如果取余的数不能够整除，那么负数取余后的结果和相同正数取余后的结果相加等于除数。
-        # 将负数角度映射到正确的范围内
-        if self.ship.angle < 0:
-            angle_unrotate = - ((b2_pi*2) - self.ship.angle % (b2_pi * 2))
-        else:
-            angle_unrotate = self.ship.angle % (b2_pi * 2)
-        # 角度映射到 [-pi, pi]
-        if angle_unrotate < -b2_pi:
-            angle_unrotate += (b2_pi * 2)
-        elif angle_unrotate > b2_pi:
-            angle_unrotate -= (b2_pi * 2)
-
-        vel_temp = self.ship.linearVelocity
-        # 计算船体行进方向的单位向量相对world向量
-        ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
-        # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
-        vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
-
         self.ship.ApplyForce(force2ship, force2position, True)
-
         self.world.Step(1.0 / FPS, 10, 10)
 
-        # 11 维传感器数据字典
-        sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
-                          'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
-                          'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
-        """传感器扫描"""
-        length = self.ship_radius * 10      # Set up the raycast line
-        point1 = self.ship.position
-        for vect in range(RAY_CAST_LASER_NUM):
-            ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
-            d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
-            point2 = point1 + d
-
-            # 初始化Raycast callback函数
-            callback = RayCastClosestCallback()
-
-            self.world.RayCast(callback, point1, point2)
-
-            if callback.hit:
-                sensor_raycast['points'][vect] = callback.point
-                sensor_raycast['normal'][vect] = callback.normal
-                if callback.fixture == self.reach_area.fixtures[0]:
-                    sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
-                elif callback.fixture in self.ground.fixtures:
-                    sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
-                else:
-                    sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
-            else:
-                sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
-        sensor_raycast['distance'][..., 1] /= self.ship_radius*10
+        # # 取余操作在对负数取余时，在Python当中,如果取余的数不能够整除，那么负数取余后的结果和相同正数取余后的结果相加等于除数。
+        # # 将负数角度映射到正确的范围内
+        # if self.ship.angle < 0:
+        #     angle_unrotate = - ((b2_pi*2) - self.ship.angle % (b2_pi * 2))
+        # else:
+        #     angle_unrotate = self.ship.angle % (b2_pi * 2)
+        # # 角度映射到 [-pi, pi]
+        # if angle_unrotate < -b2_pi:
+        #     angle_unrotate += (b2_pi * 2)
+        # elif angle_unrotate > b2_pi:
+        #     angle_unrotate -= (b2_pi * 2)
+        #
+        # vel_temp = self.ship.linearVelocity
+        # # 计算船体行进方向的单位向量相对world向量
+        # ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
+        # # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
+        # vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
+        #
+        # # 11 维传感器数据字典
+        # sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
+        #                   'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
+        #                   'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
+        # """传感器扫描"""
+        # length = self.ship_radius * 10      # Set up the raycast line
+        # point1 = self.ship.position
+        # for vect in range(RAY_CAST_LASER_NUM):
+        #     ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
+        #     d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
+        #     point2 = point1 + d
+        #
+        #     # 初始化Raycast callback函数
+        #     callback = RayCastClosestCallback()
+        #
+        #     self.world.RayCast(callback, point1, point2)
+        #
+        #     if callback.hit:
+        #         sensor_raycast['points'][vect] = callback.point
+        #         sensor_raycast['normal'][vect] = callback.normal
+        #         if callback.fixture == self.reach_area.fixtures[0]:
+        #             sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #         elif callback.fixture in self.ground.fixtures:
+        #             sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #         else:
+        #             sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #     else:
+        #         sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
+        # sensor_raycast['distance'][..., 1] /= self.ship_radius*10
 
         pos = self.ship.position
         pos_mapping = heat_map_trans(pos)
@@ -407,12 +406,12 @@ class RoutePlan(gym.Env, EzPickle):
         done = False
 
         # ship投影方向速度reward计算
-        if vel_scalar > 3.5:
-            reward_vel = -0.3
-        elif vel_scalar < 0.5:
-            reward_vel = -0.5
-        else:
-            reward_vel = 0
+        # if vel_scalar > 3.5:
+        #     reward_vel = -0.3
+        # elif vel_scalar < 0.5:
+        #     reward_vel = -0.5
+        # else:
+        #     reward_vel = 0
 
         if self.dist_record is not None and self.dist_record <= end_info.distance:
             reward_dist = -3
