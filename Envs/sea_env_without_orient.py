@@ -49,11 +49,11 @@ SHIP_POLY_BP = [
     (+8, -6), (+8, +6), (0, +8)
     ]
 
-SHIP_POSITION = [(-6.5, 8), (0, 1.5), (-6.5, 1.5),
-                 (6.5, 8), (6.5, 14.5), (-6.5, 14.5),
+SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5), (6.5, 8),
+                 (6.5, 14.5), (-6.5, 14.5),
                  (0, 14.5), (-6.5, 1.5)]
 
-element_wise_weight = 1.2
+element_wise_weight = 0.8
 SHIP_POLY = [
     (SHIP_POLY_BP[0][0]*element_wise_weight, SHIP_POLY_BP[0][1]*element_wise_weight),
     (SHIP_POLY_BP[1][0]*element_wise_weight, SHIP_POLY_BP[1][1]*element_wise_weight),
@@ -69,6 +69,7 @@ RECH_RECT = [
 ]
 
 action = [0, 0]
+
 
 class RayCastClosestCallback(b2RayCastCallback):
     """This callback finds the closest hit"""
@@ -259,11 +260,11 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=3.5,
+            linearDamping=1,
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=5,
+                density=1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -279,7 +280,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 设置抵达点位置
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=1.25)
+        circle_shape = b2CircleShape(radius=0.85)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
@@ -385,8 +386,6 @@ class RoutePlan(gym.Env, EzPickle):
 
         # ship速度计算
         vel_scalar = Distance_Cacul(vel, b2Vec2(0, 0))
-        # ship角速度
-        vel_ang = self.ship.angularVelocity
 
         # 状态值归一化
         # state = [
@@ -417,9 +416,9 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         if self.dist_record is not None and self.dist_record <= end_info.distance:
-            reward_dist = -1
+            reward_dist = -3
         else:
-            reward_dist = 1
+            reward_dist = 3
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
