@@ -38,7 +38,7 @@ def parse_args():
                         default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=16)
+                        default=64)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
                         default=3)
@@ -59,7 +59,7 @@ def parse_args():
                         default='cpu')
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=1)
+                        default=5)
     args = parser.parse_args()
     return args
 

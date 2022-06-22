@@ -118,6 +118,7 @@ class PPO:
         self.epilson = EPILSON
         self.c_loss = torch.nn.MSELoss()
         self.lamda = 0.95
+        self.kl_target = 0.01
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
         self.c_sch = torch.optim.lr_scheduler.StepLR(self.c_opt, step_size=500, gamma=0.1)
@@ -248,29 +249,32 @@ class PPO:
         pi_entropy = pi_dist.entropy().mean(dim=1).detach()
 
         # [todo] 需要增加KL散度计算
+        kl_div = torch.nn.functional.kl_div(logprob_old, logprob, reduction='batchmean')
+        if kl_div >= 1.5 * self.kl_target:
+            pass
+        else:
+            assert logprob.shape == logprob_old.shape
+            ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
 
-        assert logprob.shape == logprob_old.shape
-        ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
+            # 使shape匹配，防止元素相乘发生广播问题
+            ratio = torch.unsqueeze(ratio, dim=1)
+            assert ratio.shape == advantage.shape
+            advantage = (advantage - advantage.mean()) / advantage.std()
+            surrogate1_acc = ratio * advantage
+            surrogate2_acc = torch.clamp(ratio, 1-self.epilson, 1+self.epilson) * advantage
 
-        # 使shape匹配，防止元素相乘发生广播问题
-        ratio = torch.unsqueeze(ratio, dim=1)
-        assert ratio.shape == advantage.shape
-        advantage = (advantage - advantage.mean()) / advantage.std()
-        surrogate1_acc = ratio * advantage
-        surrogate2_acc = torch.clamp(ratio, 1-self.epilson, 1+self.epilson) * advantage
+            actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
 
-        actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
+            self.a_opt.zero_grad()
+            actor_loss = -torch.mean(actor_loss)
+            try:
+                actor_loss.backward()
+            except RuntimeError as e:
+                print('Exp backward detected!!!')
+            torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=1, norm_type=2)
 
-        self.a_opt.zero_grad()
-        actor_loss = -torch.mean(actor_loss)
-        try:
-            actor_loss.backward()
-        except RuntimeError as e:
-            print('Exp backward detected!!!')
-        torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=1, norm_type=2)
-
-        self.a_opt.step()
-        self.history_actor = actor_loss.detach().item()
+            self.a_opt.step()
+            self.history_actor = actor_loss.detach().item()
 
     def rnd_update(self, pixel, vect):
         target_vect, predict_vect = self.rnd(pixel, vect)
