@@ -56,6 +56,7 @@ def record(global_ep, global_ep_r, ep_r, res_queue, worker_ep, name, idx):
           f'EP_r: {global_ep_r.value}, '
           f'reward_ep: {ep_r}')
 
+
 def first_init(env, args):
     trace_history = []
     # 类装饰器不改变类内部调用方式

@@ -369,7 +369,10 @@ class RoutePlan(gym.Env, EzPickle):
         # sensor_raycast['distance'][..., 1] /= self.ship_radius*10
 
         pos = self.ship.position
-        pos_mapping = heat_map_trans(pos)
+        try:
+            pos_mapping = heat_map_trans(pos)
+        except ValueError as e:
+            print('pos value error with Nan')
         vel = self.ship.linearVelocity
 
         # 基于polyshape的最近距离测算
