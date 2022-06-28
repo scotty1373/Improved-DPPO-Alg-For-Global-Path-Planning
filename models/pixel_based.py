@@ -23,9 +23,12 @@ class ActorModel(nn.Module):
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64,
                                kernel_size=(4, 4), stride=(2, 2))
         self.actv2 = nn.ReLU(inplace=True)
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64,
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128,
                                kernel_size=(3, 3), stride=(1, 1))
         self.actv3 = nn.ReLU(inplace=True)
+        self.conv4 = nn.Conv2d(in_channels=128, out_channels=256,
+                               kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.actv4 = nn.ReLU(inplace=True)
 
         self.fc_state = nn.Sequential(
             nn.Linear(self.state_dim, 100),
@@ -33,7 +36,7 @@ class ActorModel(nn.Module):
         )
 
         self.mean_fc1 = nn.Sequential(
-            nn.Linear(512 + 100, 400),
+            nn.Linear(1024 + 100, 400),
             nn.ReLU(inplace=True))
         self.mean_fc2 = nn.Sequential(
             uniform_init(nn.Linear(400 + 100, 64), a=0, b=3e-3),
@@ -43,21 +46,21 @@ class ActorModel(nn.Module):
         self.mean_fc3act_ori = nn.Tanh()
 
         # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
-        self.log_std = nn.Linear(512 + 100, 400)
+        self.log_std = nn.Linear(1024 + 100, 400)
         self.log_std1 = nn.Linear(400 + 100, 64)
         self.log_std2 = nn.Linear(64, self.action_dim)
         nn.init.normal_(self.log_std1.weight, -3e-4, 3e-4)
 
-        # extractor = [self.conv1, self.actv1,
-        #              self.conv2, self.actv2,
-        #              self.conv3, self.actv3,
-        #              self.conv4, self.actv4]
         extractor = [self.conv1, self.actv1,
                      self.conv2, self.actv2,
-                     self.conv3, self.actv3]
+                     self.conv3, self.actv3,
+                     self.conv4, self.actv4]
+        # extractor = [self.conv1, self.actv1,
+        #              self.conv2, self.actv2,
+        #              self.conv3, self.actv3]
         self.extractor = nn.Sequential(*extractor)
 
-        layer = [nn.Linear(in_features=2304, out_features=512),
+        layer = [nn.Linear(in_features=9216, out_features=1024),
                  nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
 
@@ -108,16 +111,19 @@ class CriticModel(nn.Module):
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64,
                                kernel_size=(4, 4), stride=(2, 2))
         self.actv2 = nn.ReLU(inplace=True)
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64,
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128,
                                kernel_size=(3, 3), stride=(1, 1))
         self.actv3 = nn.ReLU(inplace=True)
+        self.conv4 = nn.Conv2d(in_channels=128, out_channels=256,
+                               kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        self.actv4 = nn.ReLU(inplace=True)
 
         self.fc_state = nn.Sequential(
             nn.Linear(self.state_dim, 100),
             nn.ReLU(inplace=True)
         )
         self.fc = nn.Sequential(
-            orthogonal_init(nn.Linear(512+100, 400), gain=np.sqrt(2)),
+            orthogonal_init(nn.Linear(1024+100, 400), gain=np.sqrt(2)),
             nn.ReLU(inplace=True))
         self.fc2 = nn.Sequential(
             orthogonal_init(nn.Linear(400+100, 64), gain=0.01),
@@ -126,10 +132,11 @@ class CriticModel(nn.Module):
 
         extractor = [self.conv1, self.actv1,
                      self.conv2, self.actv2,
-                     self.conv3, self.actv3]
+                     self.conv3, self.actv3,
+                     self.conv4, self.actv4]
         self.extractor = nn.Sequential(*extractor)
 
-        layer = [nn.Linear(in_features=2304, out_features=512),
+        layer = [nn.Linear(in_features=9216, out_features=1024),
                  nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
 
