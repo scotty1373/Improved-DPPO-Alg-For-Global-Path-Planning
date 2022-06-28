@@ -120,7 +120,7 @@ class HeatMap:
                     if dist <= barr_list['radius'][idx_barr]:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(barr_list['radius'][idx_barr]*0.05))
                         continue
-                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 2.15:
+                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 1.5:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(dist - barr_list['radius'][idx_barr]*0.95))
                     else:
                         pass
@@ -136,11 +136,11 @@ class HeatMap:
         :return: 2D-array
         """
         _mat = self.mat.copy()
-        center = (self.size[0]//2, self.size[1]//2)
+        center = (self.size[0]//2-1, self.size[1]//2-1)
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(center, (row_offset, col_offset))
-                ratio = 0.8
+                ratio = 0.95
                 if dist <= self.size[0]//2 * ratio:
                     """测试修改"""
                     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * ratio) + 3.8))

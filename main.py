@@ -2,7 +2,7 @@
 import numpy as np
 from PPO.PPO import PPO, PPO_Buffer
 from utils_tools.common import log2json, TIMESTAMP, seed_torch
-from utils_tools import worker
+from utils_tools.worker import worker
 from torch.utils.tensorboard import SummaryWriter
 import torch.multiprocessing as mp
 from tqdm import tqdm
@@ -20,11 +20,14 @@ def parse_args():
     parser.add_argument('--epochs',
                         help='Training epoch',
                         default=2000)
+    parser.add_argument('--train',
+                        help='Train or not',
+                        default=True)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
                         default=False)
     parser.add_argument('--checkpoint',
-                        help='If pre_traine is True, this option is pretrained ckpt path',
+                        help='If pre_trained is True, this option is pretrained ckpt path',
                         default=None)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -34,7 +37,7 @@ def parse_args():
                         default=42)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=16)
+                        default=64)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
                         default=3)
@@ -46,7 +49,7 @@ def parse_args():
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=3)
+                        default=2)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
                         default=False)
@@ -55,7 +58,7 @@ def parse_args():
                         default='cpu')
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=5)
+                        default=1)
     args = parser.parse_args()
     return args
 
@@ -73,7 +76,8 @@ def main(args):
     # tensorboard初始化
     tb_logger = SummaryWriter(log_dir=f"./log/{TIMESTAMP}", flush_secs=120)
 
-    global_ppo = PPO(state_dim=args.frame_overlay * args.state_length,
+    global_ppo = PPO(frame_overlay=args.frame_overlay,
+                     state_length=args.state_length,
                      action_dim=2,
                      batch_size=args.batch_size,
                      overlay=args.frame_overlay,

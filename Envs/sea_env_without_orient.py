@@ -44,9 +44,23 @@ PANEL = [(0.19, 0.72, 0.87), (0.10, 0.45, 0.56),  # ship
 
 RAY_CAST_LASER_NUM = 24
 
-SHIP_POLY = [
+SHIP_POLY_BP = [
     (-5, +8), (-5, -8), (0, -8),
     (+8, -6), (+8, +6), (0, +8)
+    ]
+
+SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5), (6.5, 8),
+                 (6.5, 14.5), (-6.5, 14.5),
+                 (0, 14.5), (-6.5, 1.5)]
+
+element_wise_weight = 0.8
+SHIP_POLY = [
+    (SHIP_POLY_BP[0][0]*element_wise_weight, SHIP_POLY_BP[0][1]*element_wise_weight),
+    (SHIP_POLY_BP[1][0]*element_wise_weight, SHIP_POLY_BP[1][1]*element_wise_weight),
+    (SHIP_POLY_BP[2][0]*element_wise_weight, SHIP_POLY_BP[2][1]*element_wise_weight),
+    (SHIP_POLY_BP[3][0]*element_wise_weight, SHIP_POLY_BP[3][1]*element_wise_weight),
+    (SHIP_POLY_BP[4][0]*element_wise_weight, SHIP_POLY_BP[4][1]*element_wise_weight),
+    (SHIP_POLY_BP[5][0]*element_wise_weight, SHIP_POLY_BP[5][1]*element_wise_weight)
     ]
 
 RECH_RECT = [
@@ -55,6 +69,7 @@ RECH_RECT = [
 ]
 
 action = [0, 0]
+
 
 class RayCastClosestCallback(b2RayCastCallback):
     """This callback finds the closest hit"""
@@ -111,11 +126,13 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
         self.seed_num = seed
+        self.ship_pos_fixed = ship_pos_fixed
+        self.worker_id = worker_id
 
         self.world = Box2D.b2World(gravity=(0, 0))
         self.barrier = []
@@ -128,7 +145,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 障碍物生成边界
         self.barrier_bound = 0.6
         self.dead_area_bound = 0.03
-        self.ship_radius = 0.36
+        self.ship_radius = 0.36*element_wise_weight
 
         # game状态记录
         self.game_over = None
@@ -221,14 +238,17 @@ class RoutePlan(gym.Env, EzPickle):
 
         """ship生成"""
         """!!!   已验证   !!!"""
-        if self.seed_num is not None:
-            self.np_random.seed(self.seed_num)
-        initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
-                                                    -W * self.barrier_bound / 2)
-        if self.seed_num is not None:
-            self.np_random.seed(self.seed_num)
-        initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
-                                                    H * (1 - self.dead_area_bound))
+        if self.ship_pos_fixed is None:
+            if self.seed_num is not None:
+                self.np_random.seed(self.seed_num)
+            initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
+                                                        -W * self.barrier_bound / 2)
+            if self.seed_num is not None:
+                self.np_random.seed(self.seed_num)
+            initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
+                                                        H * (1 - self.dead_area_bound))
+        else:
+            initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], SHIP_POSITION[self.worker_id][1]
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
@@ -240,11 +260,11 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=3.5,
+            linearDamping=1,
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=5,
+                density=1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -260,7 +280,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 设置抵达点位置
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=1.25)
+        circle_shape = b2CircleShape(radius=0.85)
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
@@ -272,7 +292,7 @@ class RoutePlan(gym.Env, EzPickle):
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map += heat_map_init.ground_rewardCal
+        # self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
         # import matplotlib.pyplot as plt
         # import seaborn as sns
@@ -297,60 +317,62 @@ class RoutePlan(gym.Env, EzPickle):
         # 获取力量点位置
         force2position = self.ship.GetWorldPoint(localPoint=(0, 0))
 
-        # 取余操作在对负数取余时，在Python当中,如果取余的数不能够整除，那么负数取余后的结果和相同正数取余后的结果相加等于除数。
-        # 将负数角度映射到正确的范围内
-        if self.ship.angle < 0:
-            angle_unrotate = - ((b2_pi*2) - self.ship.angle % (b2_pi * 2))
-        else:
-            angle_unrotate = self.ship.angle % (b2_pi * 2)
-        # 角度映射到 [-pi, pi]
-        if angle_unrotate < -b2_pi:
-            angle_unrotate += (b2_pi * 2)
-        elif angle_unrotate > b2_pi:
-            angle_unrotate -= (b2_pi * 2)
-
-        vel_temp = self.ship.linearVelocity
-        # 计算船体行进方向的单位向量相对world向量
-        ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
-        # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
-        vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
-
         self.ship.ApplyForce(force2ship, force2position, True)
-
         self.world.Step(1.0 / FPS, 10, 10)
 
-        # 11 维传感器数据字典
-        sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
-                          'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
-                          'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
-        """传感器扫描"""
-        length = self.ship_radius * 10      # Set up the raycast line
-        point1 = self.ship.position
-        for vect in range(RAY_CAST_LASER_NUM):
-            ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
-            d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
-            point2 = point1 + d
-
-            # 初始化Raycast callback函数
-            callback = RayCastClosestCallback()
-
-            self.world.RayCast(callback, point1, point2)
-
-            if callback.hit:
-                sensor_raycast['points'][vect] = callback.point
-                sensor_raycast['normal'][vect] = callback.normal
-                if callback.fixture == self.reach_area.fixtures[0]:
-                    sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
-                elif callback.fixture in self.ground.fixtures:
-                    sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
-                else:
-                    sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
-            else:
-                sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
-        sensor_raycast['distance'][..., 1] /= self.ship_radius*10
+        # # 取余操作在对负数取余时，在Python当中,如果取余的数不能够整除，那么负数取余后的结果和相同正数取余后的结果相加等于除数。
+        # # 将负数角度映射到正确的范围内
+        # if self.ship.angle < 0:
+        #     angle_unrotate = - ((b2_pi*2) - self.ship.angle % (b2_pi * 2))
+        # else:
+        #     angle_unrotate = self.ship.angle % (b2_pi * 2)
+        # # 角度映射到 [-pi, pi]
+        # if angle_unrotate < -b2_pi:
+        #     angle_unrotate += (b2_pi * 2)
+        # elif angle_unrotate > b2_pi:
+        #     angle_unrotate -= (b2_pi * 2)
+        #
+        # vel_temp = self.ship.linearVelocity
+        # # 计算船体行进方向的单位向量相对world向量
+        # ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
+        # # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
+        # vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
+        #
+        # # 11 维传感器数据字典
+        # sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
+        #                   'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
+        #                   'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
+        # """传感器扫描"""
+        # length = self.ship_radius * 10      # Set up the raycast line
+        # point1 = self.ship.position
+        # for vect in range(RAY_CAST_LASER_NUM):
+        #     ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
+        #     d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
+        #     point2 = point1 + d
+        #
+        #     # 初始化Raycast callback函数
+        #     callback = RayCastClosestCallback()
+        #
+        #     self.world.RayCast(callback, point1, point2)
+        #
+        #     if callback.hit:
+        #         sensor_raycast['points'][vect] = callback.point
+        #         sensor_raycast['normal'][vect] = callback.normal
+        #         if callback.fixture == self.reach_area.fixtures[0]:
+        #             sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #         elif callback.fixture in self.ground.fixtures:
+        #             sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #         else:
+        #             sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #     else:
+        #         sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
+        # sensor_raycast['distance'][..., 1] /= self.ship_radius*10
 
         pos = self.ship.position
-        pos_mapping = heat_map_trans(pos)
+        try:
+            pos_mapping = heat_map_trans(pos)
+        except ValueError as e:
+            print('pos value error with Nan')
         vel = self.ship.linearVelocity
 
         # 基于polyshape的最近距离测算
@@ -366,8 +388,6 @@ class RoutePlan(gym.Env, EzPickle):
 
         # ship速度计算
         vel_scalar = Distance_Cacul(vel, b2Vec2(0, 0))
-        # ship角速度
-        vel_ang = self.ship.angularVelocity
 
         # 状态值归一化
         # state = [
@@ -381,31 +401,30 @@ class RoutePlan(gym.Env, EzPickle):
         # assert len(state) == 6
         state = [
             end_info.distance,
-            vel_scalar,
             end_ori/b2_pi
         ]
-        assert len(state) == 3
+        assert len(state) == 2
 
         """Reward 计算"""
         done = False
 
         # ship投影方向速度reward计算
-        if vel_scalar > 3.5:
-            reward_vel = -0.3
-        elif vel_scalar < 0.5:
-            reward_vel = -0.5
-        else:
-            reward_vel = 0
+        # if vel_scalar > 3.5:
+        #     reward_vel = -0.3
+        # elif vel_scalar < 0.5:
+        #     reward_vel = -0.5
+        # else:
+        #     reward_vel = 0
 
         if self.dist_record is not None and self.dist_record <= end_info.distance:
             reward_dist = -3
         else:
-            reward_dist = 1
+            reward_dist = 3
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist + reward_vel
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
         # print(f'reward_heat:{reward_shaping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
 
         # 定义成功终止状态
@@ -414,7 +433,7 @@ class RoutePlan(gym.Env, EzPickle):
                 reward = 100
                 done = True
             elif self.ground_contect:
-                reward = -1000
+                reward = -100
                 done = True
             else:
                 reward = -10

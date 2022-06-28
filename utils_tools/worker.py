@@ -44,7 +44,7 @@ class worker(mp.Process):
         tb_logger = SummaryWriter(log_dir=f"./log/{self.tb_logger}", flush_secs=120)
 
         # 环境与agent初始化
-        env = RoutePlan(barrier_num=3)
+        env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True, worker_id=self.workerID)
         # env.seed(13)
         env = SkipEnvFrame(env, args.frame_skipping)
         assert isinstance(args.batch_size, int)
@@ -62,7 +62,8 @@ class worker(mp.Process):
         fig.suptitle('reward shaping heatmap')
         tb_logger.add_figure('figure', fig)
 
-        agent = PPO(state_dim=args.frame_overlay * args.state_length,
+        agent = PPO(frame_overlay=args.frame_overlay,
+                    state_length=args.state_length,
                     action_dim=2,
                     batch_size=args.batch_size,
                     overlay=args.frame_overlay,
@@ -89,6 +90,7 @@ class worker(mp.Process):
             entropy_acc_history = 0
             entropy_ori_history = 0
             buffer = PPO_Buffer()
+            """***********这部分作为重置并没有起到训练连接的作用， 可删除if判断***********"""
             if done:
                 """轨迹记录"""
                 trace_history, pixel_obs, obs, done = first_init(env, args)
@@ -109,7 +111,7 @@ class worker(mp.Process):
                     obs_t1 = state_frame_overlay(obs_t1, obs, args.frame_overlay)
                     pixel_obs_t1 = pixel_based(pixel_obs_t1, pixel_obs, args.frame_overlay)
 
-                if not args.pre_train:
+                if args.train:
                     # 状态存储
                     agent.state_store_memory(pixel_obs, obs, act, reward, logprob)
                     # 防止最后一次数据未被存储进buffer
@@ -139,10 +141,10 @@ class worker(mp.Process):
 
                 trace_history.append(tuple(trace_trans(env.env.ship.position)))
 
-            """管道发送buffer，并清空buffer"""
-            self.pipe_line.send(buffer)
             # 从global取回参数
             self.pull_from_global(agent)
+            """管道发送buffer，并清空buffer"""
+            self.pipe_line.send(buffer)
 
             ep_history.append(reward_history)
             log_ep_text = {'epochs': epoch,

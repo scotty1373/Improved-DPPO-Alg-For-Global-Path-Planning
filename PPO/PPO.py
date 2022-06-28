@@ -1,6 +1,7 @@
 import numpy
 import torch
 from models.pixel_based import ActorModel, CriticModel
+from utils_tools.utils import RunningMeanStd
 from torch.distributions import Normal
 import gym
 from collections import deque
@@ -13,7 +14,7 @@ import copy
 LEARNING_RATE_ACTOR = 1e-5
 LEARNING_RATE_CRITIC = 5e-5
 DECAY = 0.98
-EPILSON = 0.2
+EPILSON = 0.1
 max_mem_len = 512
 
 
@@ -80,13 +81,17 @@ class SkipEnvFrame(gym.Wrapper):
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, batch_size, overlay, device, logger=None):
+    def __init__(self, frame_overlay, state_length, action_dim, batch_size, overlay, device, logger=None, root=True):
+        self.state_length = state_length
+        self.state_dim = frame_overlay * state_length
         self.action_dim = action_dim
-        self.state_dim = state_dim
         self.batch_size = batch_size
         self.frame_overlay = overlay
         self.device = device
         self.logger = logger
+
+        # [todo] 父进程标识符
+        self.root = root
 
         # model build
         self._init(self.state_dim, self.action_dim, self.frame_overlay, self.device)
@@ -95,16 +100,19 @@ class PPO:
         self.lr_actor = LEARNING_RATE_ACTOR
         self.lr_critic = LEARNING_RATE_CRITIC
         self.decay_index = DECAY
-        self.epilson = EPILSON
+        self.epsilon = EPILSON
         self.c_loss = torch.nn.MSELoss()
-        self.clip_ratio = 0.2
-        self.lamda = 0.98
+        self.lamda = 0.95
+        self.kl_target = 0.01
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
         self.c_sch = torch.optim.lr_scheduler.StepLR(self.c_opt, step_size=500, gamma=0.1)
         self.a_sch = torch.optim.lr_scheduler.StepLR(self.a_opt, step_size=500, gamma=0.1)
 
         # training configuration
+        self.state_rms = RunningMeanStd(shape=(1, self.frame_overlay, 80, 80))
+        self.vect_rms = RunningMeanStd(shape=(1, self.frame_overlay*self.state_length))
+        self.reward_rms = RunningMeanStd()
         self.history_critic = 0
         self.history_actor = 0
         self.t = 0
@@ -193,9 +201,15 @@ class PPO:
         _, _, pi_dist = self.pi(pixel_state, vect_state)
         logprob = pi_dist.log_prob(action)
 
-        pi_entropy = pi_dist.entropy().mean(dim=1).detach()
+        pi_entropy = pi_dist.entropy().mean(dim=1)
 
-        """是否需要增加kl散度监视？？？"""
+        # [todo] 需要增加KL散度计算
+        beta = 1
+        kl_div = torch.nn.functional.kl_div(logprob, logprob_old, reduction='mean')
+        if kl_div >= 1.5 * self.kl_target:
+            beta = beta * 2
+        elif kl_div < self.kl_target / 1.5:
+            beta = beta / 2
 
         assert logprob.shape == logprob_old.shape
         ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
@@ -205,16 +219,16 @@ class PPO:
         assert ratio.shape == advantage.shape
         advantage = (advantage - advantage.mean()) / advantage.std()
         surrogate1_acc = ratio * advantage
-        surrogate2_acc = torch.clamp(ratio, 1-self.epilson, 1+self.epilson) * advantage
+        surrogate2_acc = torch.clamp(ratio, 1-self.epsilon, 1+self.epsilon) * advantage
 
-        actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
+        actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0] - kl_div * beta
 
         self.a_opt.zero_grad()
         actor_loss = -torch.mean(actor_loss)
         try:
             actor_loss.backward()
         except RuntimeError as e:
-            print('Expbackward dettected!!!')
+            print('Exp backward detected!!!')
         torch.nn.utils.clip_grad_norm_(self.pi.parameters(), max_norm=1, norm_type=2)
 
         self.a_opt.step()
@@ -228,6 +242,18 @@ class PPO:
         action = np.concatenate(action, axis=0)
         reward_nstep = np.stack(reward_nstep, axis=0)
         logprob_nstep = np.concatenate(logprob_nstep, axis=0)
+
+        pixel_state = torch.Tensor(pixel_state)
+        vect_state = torch.Tensor(vect_state)
+        action = torch.FloatTensor(action)
+        logprob_nstep = torch.FloatTensor(logprob_nstep)
+
+        # reward rms
+        reward_nstep = reward_nstep.reshape(-1, 1)
+        mean, std, count = reward_nstep.mean(), reward_nstep.std(), reward_nstep.shape[0]
+        self.reward_rms.update_from_moments(mean, std**2, count)
+        reward_nstep = (reward_nstep - self.reward_rms.mean) / np.sqrt(self.reward_rms.var)
+
         # 动作价值计算
         discount_reward = self.decayed_reward((last_pixel, last_vect), reward_nstep)
         with torch.no_grad():
@@ -235,11 +261,6 @@ class PPO:
             last_frame_vect = torch.Tensor(last_vect)
             last_val = self.v(last_frame_pixel, last_frame_vect)
 
-        pixel_state = torch.Tensor(pixel_state)
-        vect_state = torch.Tensor(vect_state)
-        action = torch.FloatTensor(action)
-        logprob_nstep = torch.FloatTensor(logprob_nstep)
-        reward_nstep = reward_nstep.reshape(-1, 1)
         if done:
             last_val = torch.zeros((1, 1))
         try:
@@ -256,11 +277,11 @@ class PPO:
 
     def update(self, buffer, args):
         buffer.get_data(self.device)
-        indice = torch.randperm(args.max_timestep * args.worker_num).to(self.device)
+        indices = torch.randperm(args.max_timestep * args.worker_num).to(self.device)
         iter_times = args.max_timestep * args.worker_num//self.batch_size
         for i in range(args.max_timestep * args.worker_num//self.batch_size):
             try:
-                batch_index = indice[i*self.batch_size:(i+1)*self.batch_size]
+                batch_index = indices[i*self.batch_size:(i+1)*self.batch_size]
                 batch_pixel = torch.index_select(buffer.pixel_state, dim=0, index=batch_index)
                 batch_vect = torch.index_select(buffer.vect_state, dim=0, index=batch_index)
                 batch_action = torch.index_select(buffer.action, dim=0, index=batch_index)
@@ -268,7 +289,7 @@ class PPO:
                 batch_logprob = torch.index_select(buffer.logprob, dim=0, index=batch_index)
                 batch_adv = torch.index_select(buffer.adv, dim=0, index=batch_index)
             except IndexError as e:
-                print('index error')
+                print('get trajectory index error')
             self.actor_update(batch_pixel, batch_vect, batch_action, batch_logprob, batch_adv)
             self.critic_update(batch_pixel, batch_vect, batch_d_reward)
             self.logger.add_scalar(tag='Loss/actor_loss',
