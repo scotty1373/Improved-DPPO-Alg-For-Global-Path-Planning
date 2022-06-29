@@ -58,7 +58,7 @@ def parse_args():
                         default='cpu')
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=1)
+                        default=5)
     args = parser.parse_args()
     return args
 

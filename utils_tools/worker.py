@@ -44,7 +44,7 @@ class worker(mp.Process):
         tb_logger = SummaryWriter(log_dir=f"./log/{self.tb_logger}", flush_secs=120)
 
         # 环境与agent初始化
-        env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True, worker_id=self.workerID, positive_heatmap=True)
+        env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True, worker_id=self.workerID)
         # env.seed(13)
         env = SkipEnvFrame(env, args.frame_skipping)
         assert isinstance(args.batch_size, int)
@@ -167,6 +167,10 @@ class worker(mp.Process):
                                 img_tensor=np.array(trace_image),
                                 global_step=epoch,
                                 dataformats='HWC')
+            if not epoch % 50:
+                env.close()
+                env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True, worker_id=self.workerID)
+                env = SkipEnvFrame(env, args.frame_skipping)
         env.close()
         self.pipe_line.send(None)
         self.pipe_line.close()

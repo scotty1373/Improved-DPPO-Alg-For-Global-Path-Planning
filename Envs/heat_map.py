@@ -9,7 +9,7 @@ import Box2D
 from Box2D import (b2CircleShape, b2EdgeShape, b2PolygonShape)
 
 ORG_SCALE = 16
-REMAP_SACLE = 40
+REMAP_SACLE = 80
 RATIO = REMAP_SACLE/ORG_SCALE
 
 
@@ -36,6 +36,8 @@ class HeatMap:
         self.reach_reward = 50
         if positive_reward is not None:
             self.positive = True
+        else:
+            self.positive = None
 
     def _init(self, bound_list):
         # 原始mat
@@ -145,9 +147,71 @@ class HeatMap:
                 ratio = 0.95
                 if dist <= self.size[0]//2 * ratio:
                     """测试修改"""
-                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * ratio) + 3.8))
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * ratio) + 5))
                 else:
-                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8)) * 3
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 5)) * 2
+        return normalize(_mat) - 1
+
+    @property
+    def ground_rewardCal_redesign(self):
+        """
+        :return: 2D-array
+        """
+        _mat = self.mat.copy()
+        limit = 0.0625
+
+        def is_inrange(num):
+            return num if not 80 * limit <= num < 80 * (1 - limit) else None
+
+        # filter 会过滤掉返回的0和其他在Python中为None的类型数据, we start from 1
+        linspace = [0] + list(filter(is_inrange, range(1, self.size[0])))
+        linspace = np.array(linspace)
+        limit_lower = self.size[0] * limit
+        limit_upper = self.size[0] * (1-limit)
+        for row_offset in range(self.size[0]):
+            for col_offset in range(self.size[0]):
+                if row_offset in linspace:
+                    if row_offset >= limit_upper:
+                        if col_offset < limit_lower or col_offset > limit_upper:
+                            target_point = (limit_lower if row_offset<limit_lower else limit_upper,
+                                            limit_lower if col_offset<limit_lower else limit_upper)
+                            dist = get_dist(target_point, (row_offset, col_offset))
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                        else:
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean*(1/(-math.log(row_offset-limit_upper+1)+5))
+                    else:
+                        if col_offset < limit_lower or col_offset > limit_upper:
+                            target_point = (limit_lower if row_offset<limit_lower else limit_upper,
+                                            limit_lower if col_offset<limit_lower else limit_upper)
+                            dist = get_dist(target_point, (row_offset, col_offset))
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                        else:
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean*(1/(-math.log(-(row_offset-limit_lower)+1)+5))
+                if col_offset in linspace:
+                    if col_offset >= limit_upper:
+                        if row_offset < limit_lower or row_offset > limit_upper:
+                            target_point = (limit_lower if row_offset<limit_lower else limit_upper,
+                                            limit_lower if col_offset<limit_lower else limit_upper)
+                            dist = get_dist(target_point, (row_offset, col_offset))
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                        else:
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean*(1/(-math.log(col_offset-limit_upper+1)+5))
+                    else:
+                        if row_offset < limit_lower or row_offset > limit_upper:
+                            target_point = (limit_lower if row_offset < limit_lower else limit_upper,
+                                            limit_lower if col_offset < limit_lower else limit_upper)
+                            dist = get_dist(target_point, (row_offset, col_offset))
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                        else:
+                            _mat[row_offset, col_offset] = \
+                                self.ground_pean*(1/(-math.log(-(col_offset-limit_lower)+1)+5))
         return normalize(_mat) - 1
 
     def reach_rewardCal(self, reachinfo):
@@ -169,7 +233,7 @@ class HeatMap:
 
 
 if __name__ == '__main__':
-    # env = HeatMap()
+    env = HeatMap(3)
     mat = env.mat.copy()
     mat += env.ground_rewardCal(env.mat.copy())
     for barr in env.barr_list:
@@ -179,8 +243,10 @@ if __name__ == '__main__':
         # ax2 = axes[1]
         # sns.heatmap(mat, annot=False, ax=ax1)
         # ax2.imshow(env.barr_mat, cmap='gray')
+        import matplotlib.pyplot as plt
+        import seaborn as sns
         fig, axes = plt.subplots(1, 1)
-        sns.heatmap(heat_mat_collect, annot=False, ax=axes)
+        sns.heatmap(_mat, annot=False, ax=axes)
         plt.show()
 
     time.time()

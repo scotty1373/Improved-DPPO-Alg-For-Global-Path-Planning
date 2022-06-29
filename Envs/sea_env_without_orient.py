@@ -141,6 +141,8 @@ class RoutePlan(gym.Env, EzPickle):
         self.ground = None
         if positive_heatmap is not None:
             self.positive_heat_map = True
+        else:
+            self.positive_heat_map = None
 
         # 障碍物数量
         self.barrier_num = barrier_num
@@ -222,10 +224,10 @@ class RoutePlan(gym.Env, EzPickle):
             # 控制障碍物生成位置在圈定范围之内60％部分
             if self.seed_num is not None:
                 self.np_random.seed(self.seed_num)
-            random_noise_x = self.np_random.uniform(-W*self.barrier_bound*0.05, W*self.barrier_bound*0.05)
+            random_noise_x = self.np_random.uniform(-W*self.barrier_bound*0.02, W*self.barrier_bound*0.02)
             if self.seed_num is not None:
                 self.np_random.seed(self.seed_num)
-            random_noise_y = self.np_random.uniform(-H*self.barrier_bound*0.05, H*self.barrier_bound*0.05)
+            random_noise_y = self.np_random.uniform(-H*self.barrier_bound*0.02, H*self.barrier_bound*0.02)
             # 通过index选择障碍物位置
             self.barrier.append(
                 self.world.CreateStaticBody(shapes=b2CircleShape(
@@ -262,7 +264,7 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=1,
+            linearDamping=3,
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
@@ -294,9 +296,10 @@ class RoutePlan(gym.Env, EzPickle):
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list, positive_reward=self.positive_heat_map)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        # self.heat_map += heat_map_init.ground_rewardCal
+        self.heat_map += heat_map_init.ground_rewardCal_redesign * 0.5
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
-        # import matplotlib.pyplot as plt
+        self.heat_map = normalize(self.heat_map) - 1
+        import matplotlib.pyplot as plt
         # import seaborn as sns
         # fig, axes = plt.subplots(1, 1)
         # sns.heatmap(self.heat_map, annot=False, ax=axes)
@@ -411,22 +414,20 @@ class RoutePlan(gym.Env, EzPickle):
         done = False
 
         # ship投影方向速度reward计算
-        # if vel_scalar > 3.5:
-        #     reward_vel = -0.3
-        # elif vel_scalar < 0.5:
-        #     reward_vel = -0.5
-        # else:
-        #     reward_vel = 0
+        if vel_scalar > 5:
+            reward_vel = -0.5
+        else:
+            reward_vel = 0
 
         if self.dist_record is not None and self.dist_record <= end_info.distance:
-            reward_dist = -3
+            reward_dist = -1
         else:
-            reward_dist = 3
+            reward_dist = 1
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist + reward_vel
         # print(f'reward_heat:{reward_shaping:.3f}, reward_dist: {reward_dist:.3f}')
 
         # 定义成功终止状态
