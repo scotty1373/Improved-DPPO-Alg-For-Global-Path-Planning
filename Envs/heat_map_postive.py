@@ -28,14 +28,12 @@ def normalize(array):
 
 
 class HeatMap:
-    def __init__(self, bound_list, *, positive_reward=None):
+    def __init__(self, bound_list):
         self.size = (REMAP_SACLE, REMAP_SACLE)
         self._init(bound_list)
         self.barr_reward = -20
         self.ground_pean = -20
         self.reach_reward = 50
-        if positive_reward is not None:
-            self.positive = True
 
     def _init(self, bound_list):
         # 原始mat
@@ -122,7 +120,7 @@ class HeatMap:
                     if dist <= barr_list['radius'][idx_barr]:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(barr_list['radius'][idx_barr]*0.05))
                         continue
-                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 1.5:
+                    elif barr_list['radius'][idx_barr] < dist <= barr_list['radius'][idx_barr] * 2.15:
                         heat_mat[row_offset, col_offset] = self.barr_reward * (1.5 - math.log(dist - barr_list['radius'][idx_barr]*0.95))
                     else:
                         pass
@@ -138,17 +136,17 @@ class HeatMap:
         :return: 2D-array
         """
         _mat = self.mat.copy()
-        center = (self.size[0]//2-1, self.size[1]//2-1)
+        center = (self.size[0]//2, self.size[1]//2)
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[1]):
                 dist = get_dist(center, (row_offset, col_offset))
-                ratio = 0.95
+                ratio = 0.5
                 if dist <= self.size[0]//2 * ratio:
                     """测试修改"""
                     _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(self.size[0]//2 * ratio) + 3.8))
                 else:
-                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8)) * 3
-        return normalize(_mat) - 1
+                    _mat[row_offset, col_offset] = self.ground_pean * (1 / (-math.log(dist) + 3.8))
+        return (- 1 + normalize(_mat))
 
     def reach_rewardCal(self, reachinfo):
         """
@@ -165,7 +163,7 @@ class HeatMap:
                     continue
                 else:
                     _mat[row_offset, col_offset] = self.reach_reward * (6 - math.log(dist-reachinfo['radius']*(1-ratio)))
-        return normalize(_mat) - 1 if self.positive is None else normalize(_mat)
+        return normalize(_mat)
 
 
 if __name__ == '__main__':

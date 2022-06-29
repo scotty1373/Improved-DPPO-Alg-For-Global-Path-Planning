@@ -113,7 +113,7 @@ class ContactDetector(b2ContactListener):
             if self.env.reach_area == contact.fixtureA.body or self.env.reach_area == contact.fixtureB.body:
                 self.env.game_over = True
             elif self.env.ground == contact.fixtureA.body or self.env.ground == contact.fixtureB.body:
-                self.env.ground_contect = True
+                self.env.ground_contact = True
 
     def EndContact(self, contact):
         if self.env.ship in [contact.fixtureA.body, contact.fixtureB.body]:
@@ -126,7 +126,7 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None, positive_heatmap=None):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
@@ -139,6 +139,8 @@ class RoutePlan(gym.Env, EzPickle):
         self.ship = None
         self.reach_area = None
         self.ground = None
+        if positive_heatmap is not None:
+            self.positive_heat_map = True
 
         # 障碍物数量
         self.barrier_num = barrier_num
@@ -149,7 +151,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         # game状态记录
         self.game_over = None
-        self.ground_contect = None
+        self.ground_contact = None
         self.dist_record = None
         self.draw_list = None
         self.heat_map = None
@@ -184,7 +186,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.world.contactListener_keepref = ContactDetector(self)
         self.world.contactListener = self.world.contactListener_keepref
         self.game_over = False
-        self.ground_contect = False
+        self.ground_contact = False
         self.dist_record = None
 
         W = VIEWPORT_W / SCALE
@@ -290,7 +292,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         # reward Heatmap构建
         bound_list = self.barrier + [self.reach_area] + [self.ground]
-        heat_map_init = HeatMap(bound_list)
+        heat_map_init = HeatMap(bound_list, positive_reward=self.positive_heat_map)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
         # self.heat_map += heat_map_init.ground_rewardCal
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
@@ -425,18 +427,18 @@ class RoutePlan(gym.Env, EzPickle):
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
         reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
-        # print(f'reward_heat:{reward_shaping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
+        # print(f'reward_heat:{reward_shaping:.3f}, reward_dist: {reward_dist:.3f}')
 
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 100
+                reward = 20
                 done = True
-            elif self.ground_contect:
-                reward = -100
+            elif self.ground_contact:
+                reward = -20
                 done = True
             else:
-                reward = -10
+                reward = -5
                 done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
