@@ -275,8 +275,8 @@ class RoutePlan(gym.Env, EzPickle):
                 restitution=0.0)    # 0.99 bouncy
                 )
         self.ship.contact = False
-        self.ship.color_bg = PANEL[0]
-        self.ship.color_fg = PANEL[1]
+        self.ship.color_bg = PANEL[2]
+        self.ship.color_fg = PANEL[3]
         self.ship.ApplyForceToCenter((self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM),
                                       self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM)), wake=True)
 
@@ -422,7 +422,7 @@ class RoutePlan(gym.Env, EzPickle):
         if self.dist_record is not None and self.dist_record <= end_info.distance:
             reward_dist = -1
         else:
-            reward_dist = 1
+            reward_dist = 1 - end_info.distance / self.dist_norm
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]

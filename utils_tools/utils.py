@@ -7,6 +7,7 @@ import torch
 import numpy as np
 from PIL import Image
 from skimage.color import rgb2gray
+from Envs.heat_map import normalize
 
 
 # 数据帧叠加
@@ -37,6 +38,7 @@ def img_proc(img, resize=(80, 80)):
     # img = img_ori.resize(resize, Image.ANTIALIAS)
     # img.show()
     img = rgb2gray(img).reshape(1, 1, 80, 80)
+    img = normalize(img)
     return img.copy()
 
 
@@ -55,6 +57,7 @@ def record(global_ep, global_ep_r, ep_r, res_queue, worker_ep, name, idx):
           f'worker_EP: {worker_ep}, '
           f'EP_r: {global_ep_r.value}, '
           f'reward_ep: {ep_r}')
+
 
 def first_init(env, args):
     trace_history = []
