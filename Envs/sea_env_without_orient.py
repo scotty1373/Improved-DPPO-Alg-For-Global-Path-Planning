@@ -299,7 +299,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.heat_map += heat_map_init.ground_rewardCal_redesign * 0.5
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
         self.heat_map = normalize(self.heat_map) - 1
-        import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
         # import seaborn as sns
         # fig, axes = plt.subplots(1, 1)
         # sns.heatmap(self.heat_map, annot=False, ax=axes)

@@ -228,8 +228,8 @@ class RoutePlan(gym.Env, EzPickle):
         self.ship = self.world.CreateDynamicBody(
             position=(initial_position_x, initial_position_y),
             angle=0.0,
-            angularDamping=1,
-            linearDamping=20,
+            angularDamping=10,
+            linearDamping=3,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
                 density=10.0,
@@ -273,8 +273,9 @@ class RoutePlan(gym.Env, EzPickle):
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map += heat_map_init.ground_rewardCal
+        self.heat_map += heat_map_init.ground_rewardCal_redesign * 0.5
         self.heat_map += heat_map_init.reach_rewardCal(heat_map_init.ra)
+        self.heat_map = (self.heat_map - np.min(self.heat_map)) / (np.max(self.heat_map) - np.min(self.heat_map)) - 1
         # self.heat_map = (self.heat_map - self.heat_map.min()) / (self.heat_map.max() - self.heat_map.min()) - 1
         import matplotlib.pyplot as plt
         import seaborn as sns
@@ -447,11 +448,12 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         reward_unrotate = 3 - abs(end_ori - angle_unrotate)
+        reward_dist = 1 - abs(end_info.distance / self.dist_norm)
 
         reward_shapping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
         reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_vel
-        print(f'reward_heat:{reward_shapping:.4f}, reward_vel:{reward_vel:.1f}')
+        print(f'reward_heat:{reward_shapping:.4f}, reward_vel:{reward_dist:.1f}')
 
         # 定义成功终止状态
         if self.ship.contact:
