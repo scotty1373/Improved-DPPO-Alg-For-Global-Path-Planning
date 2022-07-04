@@ -98,7 +98,7 @@ class TD3:
     # critic theta1为更新主要网络，theta2用于辅助更新
     def action_update(self, state):
         act = self.actor_model(state)
-        critic_q1 = self.critic_model1(state, act)
+        critic_q1, _ = self.critic_model(state, act)
         actor_loss = - torch.mean(critic_q1)
         self.actor_opt.zero_grad()
         actor_loss.backward()
@@ -106,8 +106,7 @@ class TD3:
         return actor_loss.cpu().detach().item()
 
     def critic_update(self, state, action, reward, state_t1, done):
-        q1_curr = self.critic_model1(state, action)
-        q2_curr = self.critic_model2(state, action)
+        q1_curr, q2_curr = self.critic_model(state, action)
 
         with torch.no_grad():
             target_action = self.actor_target(state_t1)
@@ -136,8 +135,7 @@ class TD3:
 
     def save_model(self, file_name):
         checkpoint = {'actor': self.actor_model.state_dict(),
-                      'critic1': self.critic_model1.state_dict(),
-                      'critic2': self.critic_model2.state_dict(),
+                      'critic1': self.critic_model.state_dict(),
                       'opt_actor': self.actor_opt.state_dict(),
                       'opt_critic': self.critic_uni_opt.state_dict()}
         torch.save(checkpoint, file_name)
@@ -145,8 +143,9 @@ class TD3:
     def load_model(self, file_name):
         checkpoint = torch.load(file_name)
         self.actor_model.load_state_dict(checkpoint['actor'])
-        self.critic_model1.load_state_dict(checkpoint['critic1'])
-        self.critic_model2.load_state_dict(checkpoint['critic2'])
+        self.critic_model.load_state_dict(checkpoint['critic1'])
+        self.actor_opt.load_state_dict(checkpoint['opt_actor'])
+        self.critic_uni_opt.load_state_dict(checkpoint['opt_critic'])
 
     @staticmethod
     def model_hard_update(current, target):
