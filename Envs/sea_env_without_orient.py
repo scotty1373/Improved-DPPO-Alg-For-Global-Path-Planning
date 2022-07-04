@@ -158,6 +158,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.draw_list = None
         self.heat_map = None
         self.dist_norm = 14.38
+        self.dist_init = None
 
         # useful range is -1 .. +1, but spikes can be higher
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(8,), dtype=np.float32)
@@ -264,7 +265,7 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=3,
+            linearDamping=10,
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
@@ -296,7 +297,7 @@ class RoutePlan(gym.Env, EzPickle):
         bound_list = self.barrier + [self.reach_area] + [self.ground]
         heat_map_init = HeatMap(bound_list, positive_reward=self.positive_heat_map)
         self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        self.heat_map += heat_map_init.ground_rewardCal_redesign * 0.5
+        self.heat_map += heat_map_init.ground_rewardCal_redesign
         self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
         self.heat_map = normalize(self.heat_map) - 1
         # import matplotlib.pyplot as plt
@@ -304,6 +305,14 @@ class RoutePlan(gym.Env, EzPickle):
         # fig, axes = plt.subplots(1, 1)
         # sns.heatmap(self.heat_map, annot=False, ax=axes)
         # plt.show()
+        end_info = b2Distance(shapeA=self.ship.fixtures[0].shape,
+                              idxA=0,
+                              shapeB=self.reach_area.fixtures[0].shape,
+                              idxB=0,
+                              transformA=self.ship.transform,
+                              transformB=self.reach_area.transform,
+                              useRadii=True)
+        self.dist_init = end_info.distance
         return self.step(np.array([0, 0]))
 
     def step(self, action_sample: np.array):
@@ -405,10 +414,12 @@ class RoutePlan(gym.Env, EzPickle):
         # ]
         # assert len(state) == 6
         state = [
+            (pos.x - self.reach_area.position.x),
+            (pos.y - self.reach_area.position.y),
             end_info.distance,
             end_ori/b2_pi
         ]
-        assert len(state) == 2
+        assert len(state) == 4
 
         """Reward 计算"""
         done = False
@@ -419,24 +430,25 @@ class RoutePlan(gym.Env, EzPickle):
         else:
             reward_vel = 0
 
-        if self.dist_record is not None and self.dist_record <= end_info.distance:
+        if self.dist_record is not None and self.dist_record < end_info.distance:
             reward_dist = -1
         else:
-            reward_dist = 1 - end_info.distance / self.dist_norm
+            # reward_dist = 1 - end_info.distance / self.dist_init
+            reward_dist = 1
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist + reward_vel
+        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
         # print(f'reward_heat:{reward_shaping:.3f}, reward_dist: {reward_dist:.3f}')
 
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 20
+                reward = 10
                 done = True
             elif self.ground_contact:
-                reward = -20
+                reward = -10
                 done = True
             else:
                 reward = -5

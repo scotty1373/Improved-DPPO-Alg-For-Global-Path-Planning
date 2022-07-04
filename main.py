@@ -43,13 +43,13 @@ def parse_args():
                         default=3)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
-                        default=3)
+                        default=4)
     # parser.add_argument('--state_length',
     #                     help='state data vector length',
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=2)
+                        default=4)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
                         default=False)

@@ -66,7 +66,7 @@ def first_init(env, args):
     '''利用广播机制初始化state帧叠加结构，不使用stack重复对数组进行操作'''
     obs = (np.ones((args.frame_overlay, args.state_length)) * obs).reshape(1, -1)
     pixel_obs_ori = env.render(mode='rgb_array')
-    pixel_obs = img_proc(pixel_obs_ori) * np.ones((1, 3, 80, 80))
+    pixel_obs = img_proc(pixel_obs_ori) * np.ones((1, args.frame_overlay, 80, 80))
     return trace_history, pixel_obs, obs, done
 
 

@@ -74,7 +74,7 @@ class SkipEnvFrame(gym.Wrapper):
             total_reward += reward
             if done:
                 break
-        return pixel, obs, reward, done, info
+        return pixel, obs, total_reward, done, info
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
