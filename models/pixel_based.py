@@ -200,7 +200,7 @@ class ActionCriticModel(nn.Module):
         self.fc2_q1 = nn.Sequential(
             orthogonal_init(nn.Linear(400+100, 64), gain=0.01),
             nn.ReLU(inplace=True),
-            orthogonal_init(nn.Linear(64, self.action_dim), gain=0.01))
+            orthogonal_init(nn.Linear(64, 1), gain=0.01))
 
         # q2 network
         self.fc_q2 = nn.Sequential(
@@ -209,7 +209,7 @@ class ActionCriticModel(nn.Module):
         self.fc2_q2 = nn.Sequential(
             orthogonal_init(nn.Linear(400+100, 64), gain=0.01),
             nn.ReLU(inplace=True),
-            orthogonal_init(nn.Linear(64, self.action_dim), gain=0.01))
+            orthogonal_init(nn.Linear(64, 1), gain=0.01))
 
     def forward(self, state, state_vect, action):
         feature_map = self.extractor(state)
@@ -230,15 +230,45 @@ class ActionCriticModel(nn.Module):
         q2_critic = self.fc2_q2(q2_critic)
         return q1_critic, q2_critic
 
+    def q_theta1(self, state, state_vect, action):
+        feature_map = self.extractor(state)
+        feature_map = torch.flatten(feature_map, start_dim=1,
+                                    end_dim=-1)
+        feature_map = torch.flatten(feature_map, start_dim=1, end_dim=-1)
+        common_vect = self.common_layer(feature_map)
+        state_vect = self.fc_state(state_vect)
+        action_vect = self.fc_action(action)
+        fusion_vect = torch.cat((common_vect, state_vect, action_vect), dim=-1)
+        # q1 network
+        q1_critic = self.fc_q1(fusion_vect)
+        q1_critic = torch.cat((q1_critic, action_vect), dim=-1)
+        q1_critic = self.fc2_q1(q1_critic)
+        return q1_critic
+
 
 if __name__ == '__main__':
-    model = ActorModel(2*3, 2, frame_overlay=3)
-    model_critic = CriticModel(2*3, 2, frame_overlay=3)
-    x = torch.randn((10, 3, 80, 80))
-    x_vect = torch.rand((10, 2*3))
-    out = model(x, x_vect)
-    from torch.utils.tensorboard import SummaryWriter
-    logger = SummaryWriter(log_dir='./', flush_secs=100)
-    logger.add_graph(model, (x, x_vect))
-    out_critic = model_critic(x)
+    # model = ActorModel(2*3, 2, frame_overlay=3)
+    # model_critic = CriticModel(2*3, 2, frame_overlay=3)
+    # x = torch.randn((10, 3, 80, 80))
+    # x_vect = torch.rand((10, 2*3))
+    # out = model(x, x_vect)
+    # from torch.utils.tensorboard import SummaryWriter
+    # logger = SummaryWriter(log_dir='./', flush_secs=100)
+    # logger.add_graph(model, (x, x_vect))
+    # out_critic = model_critic(x)
+    critic_model = ActionCriticModel(32, 2, 4)
+    pixel = torch.randn((10, 4, 80, 80))
+    vect = torch.randn((10, 32))
+    act = torch.randn((10, 2)).clamp_(-1, 1)
+    target = torch.randn((10, 1))
+    opt = torch.optim.Adam(critic_model.parameters(), lr=1e-4)
+    loss = torch.nn.MSELoss()
+    action_value = critic_model.q_theta1(pixel, vect, act)
+    loss_val = loss(action_value, target)
+    opt.zero_grad()
+    loss_val.backward()
+    opt.step()
+    critic_model.eval()
+
+
 

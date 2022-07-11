@@ -70,6 +70,11 @@ def first_init(env, args):
     return trace_history, pixel_obs, obs, done
 
 
+def cut_requires_grad(params):
+    for param in params:
+        param.requires_grad = False
+
+
 def uniform_init(layer, *, a=-3e-3, b=3e-3):
     torch.nn.init.uniform_(layer.weight, a, b)
     torch.nn.init.constant_(layer.bias, 0)
