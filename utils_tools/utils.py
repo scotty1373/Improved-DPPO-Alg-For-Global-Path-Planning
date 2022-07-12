@@ -9,6 +9,15 @@ from PIL import Image
 from skimage.color import rgb2gray
 from Envs.heat_map import normalize
 
+TIME_BOUNDARY = 500
+IMG_SIZE = (80, 80)
+IMG_SIZE_RENDEER = 480
+
+
+def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
+    remap_vect = np.array((vect[0] * ratio + (IMG_SIZE_RENDEER / 2), (-vect[1] * ratio) + IMG_SIZE_RENDEER), dtype=np.uint16)
+    return remap_vect
+
 
 # 数据帧叠加
 def state_frame_overlay(new_state, old_state, frame_num):

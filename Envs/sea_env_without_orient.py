@@ -4,6 +4,8 @@
 # @File : sea_env.py
 # @Software : PyCharm
 import math
+import random
+
 import numpy as np
 import keyboard
 
@@ -126,13 +128,12 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None, positive_heatmap=None):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, positive_heatmap=None):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
         self.seed_num = seed
         self.ship_pos_fixed = ship_pos_fixed
-        self.worker_id = worker_id
 
         self.world = Box2D.b2World(gravity=(0, 0))
         self.barrier = []
@@ -253,7 +254,8 @@ class RoutePlan(gym.Env, EzPickle):
             initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                         H * (1 - self.dead_area_bound))
         else:
-            initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], SHIP_POSITION[self.worker_id][1]
+            random_position = random.choice(SHIP_POSITION)
+            initial_position_x, initial_position_y = random_position[0], random_position[1]
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼

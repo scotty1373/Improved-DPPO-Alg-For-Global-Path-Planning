@@ -2,8 +2,9 @@
 import numpy as np
 from Envs.sea_env_without_orient import RoutePlan
 from PPO.PPO import PPO, PPO_Buffer, SkipEnvFrame
+from TD3.TD3 import TD3
 from utils_tools.common import seed_torch, TIMESTAMP
-from utils_tools.utils import state_frame_overlay, pixel_based, img_proc, first_init
+from utils_tools.utils import state_frame_overlay, pixel_based, img_proc, first_init, trace_trans
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
@@ -12,26 +13,21 @@ import copy
 import seaborn as sns
 import torch
 
-TIME_BOUNDARY = 500
-IMG_SIZE = (80, 80)
-IMG_SIZE_RENDEER = 480
-
-
-def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
-    remap_vect = np.array((vect[0] * ratio + (IMG_SIZE_RENDEER / 2), (-vect[1] * ratio) + IMG_SIZE_RENDEER), dtype=np.uint16)
-    return remap_vect
-
 
 class worker(mp.Process):
-    def __init__(self, args, name, worker_id, g_net_pi, g_net_v, pipe_line, time_stamp=None):
+    def __init__(self, args, name, worker_id, g_net_actor, g_net_critic, pipe_line, replay_memory, time_stamp=None):
         super(worker, self).__init__()
         self.config = args
         self.workerID = worker_id
         self.name = f'{name}'
-        self.g_net_pi = g_net_pi
-        self.g_net_v = g_net_v
+        self.g_net_actor = g_net_actor
+        self.g_net_critic = g_net_critic
         self.pipe_line = pipe_line
+        self.replay_memory = replay_memory
         self.tb_logger = time_stamp
+
+    def global_state_store_memory(self, pixel, vect, action, reward, next_pixel, next_vect, done):
+        self.replay_memory.append((pixel, vect, action, reward, next_pixel, next_vect, done))
 
     def run(self):
         args = self.config
@@ -55,30 +51,29 @@ class worker(mp.Process):
         fig, ax1 = plt.subplots(1, 1)
         sns.heatmap(env.env.heat_map, ax=ax1)
         fig.suptitle('reward shaping heatmap')
-        # self.tb_logger.add_figure(f'worker{self.name}/heatmap', fig)
-
-        fig, ax1 = plt.subplots(1, 1)
-        sns.heatmap(env.env.heat_map, ax=ax1)
-        fig.suptitle('reward shaping heatmap')
         tb_logger.add_figure('figure', fig)
 
-        agent = PPO(frame_overlay=args.frame_overlay,
+        """初始化agent"""
+        agent = TD3(frame_overlay=args.frame_overlay,
                     state_length=args.state_length,
                     action_dim=2,
                     batch_size=args.batch_size,
                     overlay=args.frame_overlay,
-                    device=device)
+                    device=device,
+                    logger=tb_logger,
+                    root=False)
 
+        # 子进程从主进程获取网络参数
         self.pull_from_global(agent)
 
-        ep_history = []
-        """agent探索轨迹追踪"""
+        """初始化agent探索轨迹追踪"""
         env.reset()
         trace_image = env.render(mode='rgb_array')
         trace_image = Image.fromarray(trace_image)
         trace_path = ImageDraw.Draw(trace_image)
 
         done = True
+        ep_history = []
 
         # NameSpace
         trace_history = None
@@ -95,12 +90,14 @@ class worker(mp.Process):
                 """轨迹记录"""
                 trace_history, pixel_obs, obs, done = first_init(env, args)
 
+            # timestep 样本收集
             for t in range(args.max_timestep):
+                # 单幕数据收集完毕
                 if done:
                     # 单幕结束显示轨迹
                     trace_path.line(trace_history, width=1, fill='black')
                     trace_history, pixel_obs, obs, done = first_init(env, args)
-                act, logprob, dist = agent.get_action((pixel_obs, obs))
+                act = agent.get_action(pixel_obs, obs)
                 # 环境交互
                 pixel_obs_t1_ori, obs_t1, reward, done, _ = env.step(act.squeeze())
                 pixel_obs_t1 = img_proc(pixel_obs_t1_ori)
@@ -113,10 +110,10 @@ class worker(mp.Process):
 
                 if args.train:
                     # 状态存储
-                    agent.state_store_memory(pixel_obs, obs, act, reward, logprob)
+                    agent.state_store_memory(pixel_obs, obs, act, reward, pixel_obs_t1, obs_t1, done)
                     # 防止最后一次数据未被存储进buffer
-                    if done or t == args.max_timestep - 1:
-                        pixel_state, vect_state, action, logprob, d_reward, adv = agent.get_trjt(pixel_obs_t1, obs_t1, done)
+                    if t == args.max_timestep - 1:
+                        pixel_state, vect_state, action, logprob, d_reward, adv = self.replay_memory(pixel_obs_t1, obs_t1, done)
                         buffer.collect_trajorbatch(pixel_state, vect_state, action, logprob, d_reward, adv)
                         agent.memory.clear()
                         done = True
@@ -129,15 +126,6 @@ class worker(mp.Process):
                 obs = obs_t1
                 pixel_obs = pixel_obs_t1
                 reward_history += reward
-                entropy_acc_history += entropy_acc
-                entropy_ori_history += entropy_ori
-
-                tb_logger.add_scalar(tag=f'Iter_{self.name}/entropy_acc',
-                                     scalar_value=entropy_acc,
-                                     global_step=epoch * args.max_timestep + t)
-                tb_logger.add_scalar(tag=f'Iter_{self.name}/entropy_ori',
-                                     scalar_value=entropy_ori,
-                                     global_step=epoch * args.max_timestep + t)
 
                 trace_history.append(tuple(trace_trans(env.env.ship.position)))
 
@@ -157,12 +145,6 @@ class worker(mp.Process):
             tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_reward',
                                  scalar_value=reward_history,
                                  global_step=epoch)
-            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_acc',
-                                 scalar_value=log_ep_text["entropy_acc_mean"],
-                                 global_step=epoch)
-            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_ori',
-                                 scalar_value=log_ep_text["entropy_ori_mean"],
-                                 global_step=epoch)
             tb_logger.add_image(tag=f'Image_{self.name}/Trace',
                                 img_tensor=np.array(trace_image),
                                 global_step=epoch,
@@ -176,8 +158,8 @@ class worker(mp.Process):
         self.pipe_line.close()
 
     def pull_from_global(self, subprocess):
-        self.hard_update(self.g_net_pi, subprocess.pi)
-        self.hard_update(self.g_net_v, subprocess.v)
+        self.hard_update(self.g_net_actor, subprocess.actor_model)
+        self.hard_update(self.g_net_critic, subprocess.critic_model)
 
     @staticmethod
     def hard_update(model, target_model):
