@@ -106,6 +106,7 @@ def main(args):
                 batch_size=args.batch_size,
                 overlay=args.frame_overlay,
                 device=device,
+                train=args.train,
                 logger=tb_logger)
 
     # pretrained 选项，载入预训练模型

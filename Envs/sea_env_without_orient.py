@@ -65,6 +65,8 @@ SHIP_POLY = [
     (SHIP_POLY_BP[5][0]*element_wise_weight, SHIP_POLY_BP[5][1]*element_wise_weight)
     ]
 
+REACH_POLY = [(-1, 1), (-1, -1), (1, -1), (1, 1)]
+
 RECH_RECT = [
     (-0.5, +0.5), (-0.5, -0.5),
     (+0.5, -0.5), (+0.5, +0.5)
@@ -278,8 +280,8 @@ class RoutePlan(gym.Env, EzPickle):
                 restitution=0.0)    # 0.99 bouncy
                 )
         self.ship.contact = False
-        self.ship.color_bg = PANEL[2]
-        self.ship.color_fg = PANEL[3]
+        self.ship.color_bg = PANEL[3]
+        self.ship.color_fg = PANEL[4]
         self.ship.ApplyForceToCenter((self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM),
                                       self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM)), wake=True)
 
@@ -287,7 +289,8 @@ class RoutePlan(gym.Env, EzPickle):
         # 设置抵达点位置
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=0.85)
+        # circle_shape = b2CircleShape(radius=0.85)
+        circle_shape = b2PolygonShape(vertices=[(x/5, y/5) for x, y in REACH_POLY])
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
@@ -468,19 +471,18 @@ class RoutePlan(gym.Env, EzPickle):
                 trans = f.body.transform
                 if type(f.shape) is b2CircleShape:
                     t = rendering.Transform(translation=trans * f.shape.pos)
-                    # reach area区域渲染
-                    if hasattr(obj, 'color'):
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[4]).add_attr(t)
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[5], filled=False, linewidth=2).add_attr(t)
-                    else:
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[2]).add_attr(t)
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[3], filled=False, linewidth=2).add_attr(t)
+                    self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[2]).add_attr(t)
+                    self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[3], filled=False, linewidth=2).add_attr(t)
                 else:
                     path = [trans * v for v in f.shape.vertices]
                     if hasattr(obj, 'color_bg'):
                         self.viewer.draw_polygon(path, color=obj.color_bg)
                         path.append(path[0])
                         self.viewer.draw_polyline(path, color=obj.color_fg, linewidth=2)
+                    elif hasattr(obj, 'color'):
+                        self.viewer.draw_polygon(path, color=PANEL[4])
+                        path.append(path[0])
+                        self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
                     else:
                         self.viewer.draw_polygon(path, color=PANEL[4])
                         self.viewer.draw_polyline(path, color=PANEL[7], linewidth=10)

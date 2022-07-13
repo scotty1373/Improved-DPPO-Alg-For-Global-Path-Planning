@@ -113,25 +113,25 @@ class ActionCriticModel(nn.Module):
             nn.ReLU(inplace=True)
         )
         self.fc_action = nn.Sequential(
-            nn.Linear(self.action_dim, 100),
+            nn.Linear(self.action_dim, 200),
             nn.ReLU(inplace=True)
         )
 
         # q1 network
         self.fc_q1 = nn.Sequential(
-            orthogonal_init(nn.Linear(1024+100+100, 400), gain=np.sqrt(2)),
+            orthogonal_init(nn.Linear(1024+100+200, 400), gain=np.sqrt(2)),
             nn.ReLU(inplace=True))
         self.fc2_q1 = nn.Sequential(
-            orthogonal_init(nn.Linear(400+100, 64), gain=0.01),
+            orthogonal_init(nn.Linear(400+200, 64), gain=0.01),
             nn.ReLU(inplace=True),
             orthogonal_init(nn.Linear(64, 1), gain=0.01))
 
         # q2 network
         self.fc_q2 = nn.Sequential(
-            orthogonal_init(nn.Linear(1024+100+100, 400), gain=np.sqrt(2)),
+            orthogonal_init(nn.Linear(1024+100+200, 400), gain=np.sqrt(2)),
             nn.ReLU(inplace=True))
         self.fc2_q2 = nn.Sequential(
-            orthogonal_init(nn.Linear(400+100, 64), gain=0.01),
+            orthogonal_init(nn.Linear(400+200, 64), gain=0.01),
             nn.ReLU(inplace=True),
             orthogonal_init(nn.Linear(64, 1), gain=0.01))
 

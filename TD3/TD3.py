@@ -13,7 +13,7 @@ DISTRIBUTION_INDEX = [0, 0.5]
 
 
 class TD3:
-    def __init__(self, frame_overlay, state_length, action_dim, batch_size, overlay, device, logger=None, *, main_process=True):
+    def __init__(self, frame_overlay, state_length, action_dim, batch_size, overlay, device, train=True, logger=None, *, main_process=True):
         self.action_space = np.array((-1, 1))
         self.frame_overlay = frame_overlay
         self.state_length = state_length
@@ -22,6 +22,7 @@ class TD3:
         self.batch_size = batch_size
         self.overlay = overlay
         self.device = device
+        self.train = train
         self.logger = logger
         self.main_process = main_process
 
@@ -75,11 +76,15 @@ class TD3:
         pixel_state = torch.FloatTensor(pixel_state).to(self.device)
         vect_state = torch.FloatTensor(vect_state).to(self.device)
         logits = self.actor_model(pixel_state, vect_state)
-        # acc 动作裁剪
-        logits[..., 0] = (logits[..., 0] + self.noise.sample()).clamp_(min=0, max=1)
-        # ori 动做裁剪
-        logits[..., 1] = (logits[..., 1] + self.noise.sample()).clamp_(min=self.action_space.min(),
-                                                                       max=self.action_space.max())
+        if self.train:
+            # acc 动作裁剪
+            logits[..., 0] = (logits[..., 0] + self.noise.sample()).clamp_(min=0, max=1)
+            # ori 动做裁剪
+            logits[..., 1] = (logits[..., 1] + self.noise.sample()).clamp_(min=self.action_space.min(),
+                                                                           max=self.action_space.max())
+        else:
+            logits[..., 0] = logits[..., 0].clamp_(min=0, max=1)
+            logits[..., 1] = logits[..., 1].clamp_(min=self.action_space.min(), max=self.action_space.max())
         return logits.cpu().detach().numpy()
 
     def update(self):

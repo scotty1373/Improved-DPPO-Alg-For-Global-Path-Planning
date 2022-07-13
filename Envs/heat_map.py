@@ -80,14 +80,15 @@ class HeatMap:
                 trans = f.body.transform
                 if type(f.shape) == b2CircleShape:
                     # 障碍物参数
-                    if hasattr(obj, 'color'):
-                        reach_area['position'] = heat_map_trans(obj.position)[[1, 0]]
-                        reach_area['radius'] = f.shape.radius * RATIO
-                    # 抵达点参数
-                    else:
-                        # box2d提供的横纵坐标相反
-                        barrier_list['position'].append(heat_map_trans(trans*f.shape.pos)[[1, 0]])
-                        barrier_list['radius'].append(f.shape.radius * RATIO)
+                    # if hasattr(obj, 'color'):
+                    #     reach_area['position'] = heat_map_trans(obj.position)[[1, 0]]
+                    #     reach_area['radius'] = f.shape.radius * RATIO
+                    # # 抵达点参数
+                    # else:
+                    #
+                    # box2d提供的横纵坐标相反
+                    barrier_list['position'].append(heat_map_trans(trans*f.shape.pos)[[1, 0]])
+                    barrier_list['radius'].append(f.shape.radius * RATIO)
                 # 边界控制参数
                 # [todo] chain边界会导致多个fixture创建
                 elif type(f.shape) == b2EdgeShape:
@@ -95,6 +96,11 @@ class HeatMap:
                     ground_area['xyxy'] = [all_vertices[0], all_vertices[2]]
                     ground_area['scope'] = REMAP_SACLE//2*0.9
                     break
+                elif type(f.shape) == b2PolygonShape:
+                    if hasattr(obj, 'color'):
+                        reach_area['position'] = heat_map_trans(obj.position)[[1, 0]]
+                        reach_area['radius'] = math.sqrt(2) * RATIO
+
         return barrier_list, reach_area, ground_area
 
     def rewardCal(self, barr_list):
