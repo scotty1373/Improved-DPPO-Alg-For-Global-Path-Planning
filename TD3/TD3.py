@@ -35,7 +35,7 @@ class TD3:
         self.start_train = 2000
         self.discount_index = 0.95
         self.smooth_regular = 0.2
-        self.delay_update = 5
+        self.delay_update = 20
         self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1])
         self.target_model_regular_noise = Normal(0, 0.2)
 

@@ -416,12 +416,10 @@ class RoutePlan(gym.Env, EzPickle):
         # ]
         # assert len(state) == 6
         state = [
-            (pos.x - self.reach_area.position.x),
-            (pos.y - self.reach_area.position.y),
             end_info.distance,
             end_ori/b2_pi
         ]
-        assert len(state) == 4
+        assert len(state) == 2
 
         """Reward 计算"""
         done = False

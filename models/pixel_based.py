@@ -17,18 +17,18 @@ class ActorModel(nn.Module):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.frame_overlay = frame_overlay
-        self.conv1 = nn.Conv2d(in_channels=self.frame_overlay, out_channels=32,
+        self.conv1 = nn.Conv2d(in_channels=self.frame_overlay, out_channels=16,
                                kernel_size=(8, 8), stride=(4, 4))
         self.actv1 = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64,
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32,
                                kernel_size=(4, 4), stride=(2, 2))
         self.actv2 = nn.ReLU(inplace=True)
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128,
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64,
                                kernel_size=(3, 3), stride=(1, 1))
         self.actv3 = nn.ReLU(inplace=True)
-        self.conv4 = nn.Conv2d(in_channels=128, out_channels=256,
-                               kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-        self.actv4 = nn.ReLU(inplace=True)
+        # self.conv4 = nn.Conv2d(in_channels=128, out_channels=256,
+        #                        kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        # self.actv4 = nn.ReLU(inplace=True)
 
         self.fc_state = nn.Sequential(
             nn.Linear(self.state_dim, 200),
@@ -45,16 +45,16 @@ class ActorModel(nn.Module):
         self.mean_fc3act_acc = nn.Sigmoid()
         self.mean_fc3act_ori = nn.Tanh()
 
-        extractor = [self.conv1, self.actv1,
-                     self.conv2, self.actv2,
-                     self.conv3, self.actv3,
-                     self.conv4, self.actv4]
         # extractor = [self.conv1, self.actv1,
         #              self.conv2, self.actv2,
-        #              self.conv3, self.actv3]
+        #              self.conv3, self.actv3,
+        #              self.conv4, self.actv4]
+        extractor = [self.conv1, self.actv1,
+                     self.conv2, self.actv2,
+                     self.conv3, self.actv3]
         self.extractor = nn.Sequential(*extractor)
 
-        layer = [nn.Linear(in_features=9216, out_features=1024),
+        layer = [nn.Linear(in_features=2304, out_features=1024),
                  nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
 
@@ -82,27 +82,30 @@ class ActionCriticModel(nn.Module):
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.frame_overlay = frame_overlay
-        self.conv1 = nn.Conv2d(in_channels=frame_overlay, out_channels=32,
+        self.conv1 = nn.Conv2d(in_channels=frame_overlay, out_channels=16,
                                kernel_size=(8, 8), stride=(4, 4))
         self.actv1 = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64,
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32,
                                kernel_size=(4, 4), stride=(2, 2))
         self.actv2 = nn.ReLU(inplace=True)
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128,
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64,
                                kernel_size=(3, 3), stride=(1, 1))
         self.actv3 = nn.ReLU(inplace=True)
-        self.conv4 = nn.Conv2d(in_channels=128, out_channels=256,
-                               kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-        self.actv4 = nn.ReLU(inplace=True)
+        # self.conv4 = nn.Conv2d(in_channels=128, out_channels=256,
+        #                        kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+        # self.actv4 = nn.ReLU(inplace=True)
 
         # 特征提取  公用层
+        # extractor = [self.conv1, self.actv1,
+        #              self.conv2, self.actv2,
+        #              self.conv3, self.actv3,
+        #              self.conv4, self.actv4]
         extractor = [self.conv1, self.actv1,
                      self.conv2, self.actv2,
-                     self.conv3, self.actv3,
-                     self.conv4, self.actv4]
+                     self.conv3, self.actv3]
         self.extractor = nn.Sequential(*extractor)
 
-        layer = [nn.Linear(in_features=9216, out_features=1024),
+        layer = [nn.Linear(in_features=2304, out_features=1024),
                  nn.ReLU(inplace=True)]
         self.common_layer = nn.Sequential(*layer)
         self.fc_state = nn.Sequential(
