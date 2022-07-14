@@ -36,7 +36,7 @@ class TD3:
         self.start_train = 2000
         self.discount_index = 0.95
         self.smooth_regular = 0.2
-        self.delay_update = 20
+        self.delay_update = 5
         self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1])
         self.target_model_regular_noise = Normal(0, 0.2)
 
@@ -61,7 +61,7 @@ class TD3:
     def _init(self, state_dim, action_dim, frame_overlay, root):
         self.actor_model = ActorModel(state_dim, action_dim, frame_overlay).to(self.device)
         self.critic_model = ActionCriticModel(state_dim, action_dim, frame_overlay).to(self.device)
-        self.memory = deque(maxlen=24000)
+        self.memory = deque(maxlen=72000)
         if root:
             self.actor_target = ActorModel(state_dim, action_dim, frame_overlay).to(self.device)
             self.critic_target = ActionCriticModel(state_dim, action_dim, frame_overlay).to(self.device)

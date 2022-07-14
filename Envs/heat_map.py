@@ -99,7 +99,7 @@ class HeatMap:
                 elif type(f.shape) == b2PolygonShape:
                     if hasattr(obj, 'color'):
                         reach_area['position'] = heat_map_trans(obj.position)[[1, 0]]
-                        reach_area['radius'] = math.sqrt(2) * RATIO
+                        reach_area['radius'] = math.sqrt(2)/2 * RATIO
 
         return barrier_list, reach_area, ground_area
 

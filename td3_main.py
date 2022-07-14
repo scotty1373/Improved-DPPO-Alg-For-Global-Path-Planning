@@ -28,13 +28,15 @@ def parse_args():
                         default=2000)
     parser.add_argument('--train',
                         help='Train or not',
-                        default=True)
+                        default=True,
+                        type=bool)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
-                        default=False)
+                        default=True,
+                        type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default=None)
+                        default='./log/1657730384/save_model_ep344.pth')
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
                         default=512)
@@ -58,7 +60,8 @@ def parse_args():
                         default=2)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
-                        default=False)
+                        default=False,
+                        type=bool)
     parser.add_argument('--device',
                         help='data device',
                         default='cpu')
