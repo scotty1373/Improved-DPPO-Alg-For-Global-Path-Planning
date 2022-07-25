@@ -54,17 +54,15 @@ class TD3:
         self.actor_loss_history = 0.0
         self.critic_loss_history = 0.0
 
-        # model first hard update
-        self.model_hard_update(self.actor_model, self.actor_target)
-        self.model_hard_update(self.critic_model, self.critic_target)
-
     def _init(self, state_dim, action_dim, frame_overlay, root):
         self.actor_model = ActorModel(state_dim, action_dim, frame_overlay).to(self.device)
         self.critic_model = ActionCriticModel(state_dim, action_dim, frame_overlay).to(self.device)
-        self.memory = deque(maxlen=72000)
         if root:
             self.actor_target = ActorModel(state_dim, action_dim, frame_overlay).to(self.device)
             self.critic_target = ActionCriticModel(state_dim, action_dim, frame_overlay).to(self.device)
+            # model first hard update
+            self.model_hard_update(self.actor_model, self.actor_target)
+            self.model_hard_update(self.critic_model, self.critic_target)
             # target model requires_grad设为False
             cut_requires_grad(self.actor_target.parameters())
             cut_requires_grad(self.critic_target.parameters())
@@ -73,9 +71,9 @@ class TD3:
         self.memory.append((pixel, vect, action, reward, next_pixel, next_vect, done))
 
     def get_action(self, pixel_state, vect_state):
-        pixel_state = torch.FloatTensor(pixel_state).to(self.device)
-        vect_state = torch.FloatTensor(vect_state).to(self.device)
-        logits = self.actor_model(pixel_state, vect_state)
+        pixel = torch.FloatTensor(pixel_state).to(self.device)
+        vect = torch.FloatTensor(vect_state).to(self.device)
+        logits = self.actor_model(pixel, vect)
         if self.train:
             # acc 动作裁剪
             logits[..., 0] = (logits[..., 0] + self.noise.sample()).clamp_(min=0, max=1)
@@ -85,42 +83,19 @@ class TD3:
         else:
             logits[..., 0] = logits[..., 0].clamp_(min=0, max=1)
             logits[..., 1] = logits[..., 1].clamp_(min=self.action_space.min(), max=self.action_space.max())
-        return logits.cpu().detach().numpy()
+        return logits.detach().cpu().numpy()
 
-    def update(self):
-        if self.memory.__len__() < self.start_train:
+    def update(self, replay_buffer):
+        if replay_buffer.size < self.start_train:
             return
-        # 样本抽取
-        batch_sample = random.sample(self.memory, self.batch_size)
-
         # batch数据处理
-        pixel, vect, action, reward, next_pixel, next_vect, done = zip(*batch_sample)
-        pixel = np.concatenate(pixel, axis=0)
-        vect = np.concatenate(vect, axis=0)
-        action = np.concatenate(action).reshape(-1, self.action_dim)
-        reward = np.array(reward).reshape(-1, 1)
-        next_pixel = np.concatenate(next_pixel, axis=0)
-        next_vect = np.concatenate(next_vect, axis=0)
-        done = np.array(done, dtype='float32').reshape(-1, 1)
-
-        # reward rms
-        mean, std, count = reward.mean(), reward.std(), reward.shape[0]
-        self.rwd_rms.update_from_moments(mean, std**2, count)
-        reward = (reward - self.rwd_rms.mean) / (np.sqrt(self.rwd_rms.var) + 1e-4)
-
-        pixel = torch.FloatTensor(pixel).to(self.device)
-        vect = torch.FloatTensor(vect).to(self.device)
-        action = torch.FloatTensor(action).to(self.device)
-        reward = torch.FloatTensor(reward).to(self.device)
-        next_pixel = torch.FloatTensor(next_pixel).to(self.device)
-        next_vect = torch.FloatTensor(next_vect).to(self.device)
-        done = torch.FloatTensor(done).to(self.device)
+        pixel, next_pixel, vect, next_vect, reward, action, done = replay_buffer.get_batch(self.batch_size)
 
         # critic更新
         self.critic_update(pixel, vect, action, next_pixel, next_vect, reward, done)
 
         # actor延迟更新
-        if self.t % self.delay_update:
+        if self.t % self.delay_update == 0:
             self.action_update(pixel_state=pixel, vect_state=vect)
             with torch.no_grad():
                 self.model_soft_update(self.actor_model, self.actor_target)
@@ -138,14 +113,13 @@ class TD3:
         act = self.actor_model(pixel_state, vect_state)
         critic_q1 = self.critic_model.q_theta1(pixel_state, vect_state, act)
         actor_loss = - torch.mean(critic_q1)
+        self.critic_uni_opt.zero_grad()
         self.actor_opt.zero_grad()
         actor_loss.backward()
         self.actor_opt.step()
-        self.actor_loss_history = actor_loss.cpu().detach().item()
+        self.actor_loss_history = actor_loss.item()
 
     def critic_update(self, pixel_state, vect_state, action, next_pixel_state, next_vect_state, reward, done):
-        q1_curr, q2_curr = self.critic_model(pixel_state, vect_state, action)
-
         with torch.no_grad():
             target_action = self.actor_target(next_pixel_state, next_vect_state)
 
@@ -159,8 +133,9 @@ class TD3:
             target_q1q2 = torch.cat([target_q1, target_q2], dim=1)
 
             # 根据论文附录中遵循deep Q learning，增加终止状态
-            td_target = reward + self.discount_index * (1 - done) * torch.min(target_q1q2, dim=1)[0].reshape(self.batch_size, 1)
+            td_target = reward + self.discount_index * (1 - done) * torch.min(target_q1q2, dim=1)[0].reshape(-1, 1)
 
+        q1_curr, q2_curr = self.critic_model(pixel_state, vect_state, action)
         loss_q1 = self.critic_loss(q1_curr, td_target)
         loss_q2 = self.critic_loss(q2_curr, td_target)
         loss_critic = loss_q1 + loss_q2
@@ -168,7 +143,7 @@ class TD3:
         self.critic_uni_opt.zero_grad()
         loss_critic.backward()
         self.critic_uni_opt.step()
-        self.critic_loss_history = loss_critic.cpu().detach().item()
+        self.critic_loss_history = loss_critic.item()
 
     def save_model(self, file_name):
         checkpoint = {'actor': self.actor_model.state_dict(),
@@ -184,8 +159,7 @@ class TD3:
         self.actor_opt.load_state_dict(checkpoint['opt_actor'])
         self.critic_uni_opt.load_state_dict(checkpoint['opt_critic'])
 
-    @staticmethod
-    def model_hard_update(current, target):
+    def model_hard_update(self, current, target):
         weight_model = deepcopy(current.state_dict())
         target.load_state_dict(weight_model)
 

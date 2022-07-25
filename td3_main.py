@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
+import gc
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +15,7 @@ from PPO.wrapper import SkipEnvFrame
 from TD3.TD3 import TD3
 from utils_tools.common import TIMESTAMP, seed_torch
 from utils_tools.utils import state_frame_overlay, pixel_based, first_init, trace_trans
+from utils_tools.utils import ReplayBuffer
 
 TIME_BOUNDARY = 500
 IMG_SIZE = (80, 80)
@@ -25,49 +27,59 @@ def parse_args():
         description='PPO config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=2000)
+                        default=1000,
+                        type=int)
     parser.add_argument('--train',
                         help='Train or not',
                         default=True,
                         type=bool)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
-                        default=True,
+                        default=False,
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default='./log/1657730384/save_model_ep344.pth')
+                        default='./log/1658424288/save_model_ep157.pth',
+                        type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=512)
+                        default=512,
+                        type=int)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42)
+                        default=42,
+                        type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=128)
+                        default=128,
+                        type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=4)
+                        default=4,
+                        type=int)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
-                        default=4)
+                        default=4,
+                        type=int)
     # parser.add_argument('--state_length',
     #                     help='state data vector length',
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=2)
+                        default=2,
+                        type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
                         default=False,
                         type=bool)
     parser.add_argument('--device',
                         help='data device',
-                        default='cpu')
-    parser.add_argument('--worker_num',
-                        help='worker number',
-                        default=5)
+                        default='cpu',
+                        type=str)
+    parser.add_argument('--replay_buffer_size',
+                        help='Replay Buffer Size',
+                        default=32000,
+                        type=int)
     args = parser.parse_args()
     return args
 
@@ -83,6 +95,11 @@ def main(args):
     # logger_ep = log2json(filename='train_log_ep', type_json=True)
     # tensorboard初始化
     tb_logger = SummaryWriter(log_dir=f"./log/{TIMESTAMP}", flush_secs=120)
+    replay_buffer = ReplayBuffer(max_lens=args.replay_buffer_size,
+                                 frame_overlay=args.frame_overlay,
+                                 state_length=args.state_length,
+                                 action_dim=2,
+                                 device=device)
 
     # 是否随机初始化种子
     if args.seed is not None:
@@ -98,7 +115,7 @@ def main(args):
 
     # 子线程显示当前环境heatmap
     fig, ax1 = plt.subplots(1, 1)
-    sns.heatmap(env.env.heat_map, ax=ax1)
+    sns.heatmap(env.env.heat_map.T, ax=ax1).invert_yaxis()
     fig.suptitle('reward shaping heatmap')
     tb_logger.add_figure('figure', fig)
 
@@ -164,8 +181,8 @@ def main(args):
                 if t == args.max_timestep - 1:
                     done = True
                 # 状态存储
-                agent.state_store_memory(pixel_obs, obs, act, reward, pixel_obs_t1, obs_t1, done)
-                agent.update()
+                replay_buffer.add(pixel_obs, pixel_obs_t1, obs, obs_t1, reward, act, done)
+                agent.update(replay_buffer)
 
             # 记录timestep, reward＿sum
             agent.t += 1
@@ -201,11 +218,11 @@ def main(args):
         # 环境重置
         if not epoch % 50:
             env.close()
-            env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True)
+            env = RoutePlan(barrier_num=(epoch//150+1)*3, seed=seed, ship_pos_fixed=True)
             env = SkipEnvFrame(env, args.frame_skipping)
+            agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
     env.close()
     tb_logger.close()
-    agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
 
 
 if __name__ == '__main__':
