@@ -4,6 +4,9 @@
 # @File : sea_env.py
 # @Software : PyCharm
 import math
+import random
+import time
+
 import numpy as np
 import keyboard
 
@@ -22,7 +25,7 @@ b2ContactListener：碰撞检测监听器
 import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
-from .heat_map import HeatMap, heat_map_trans, normalize
+from .heatmap import HeatMap, heat_map_trans, normalize
 from utils_tools.utils import img_proc
 
 SCALE = 30
@@ -62,6 +65,8 @@ SHIP_POLY = [
     (SHIP_POLY_BP[4][0]*element_wise_weight, SHIP_POLY_BP[4][1]*element_wise_weight),
     (SHIP_POLY_BP[5][0]*element_wise_weight, SHIP_POLY_BP[5][1]*element_wise_weight)
     ]
+
+REACH_POLY = [(-1, 1), (-1, -1), (1, -1), (1, 1)]
 
 RECH_RECT = [
     (-0.5, +0.5), (-0.5, -0.5),
@@ -113,7 +118,7 @@ class ContactDetector(b2ContactListener):
             if self.env.reach_area == contact.fixtureA.body or self.env.reach_area == contact.fixtureB.body:
                 self.env.game_over = True
             elif self.env.ground == contact.fixtureA.body or self.env.ground == contact.fixtureB.body:
-                self.env.ground_contect = True
+                self.env.ground_contact = True
 
     def EndContact(self, contact):
         if self.env.ship in [contact.fixtureA.body, contact.fixtureB.body]:
@@ -126,14 +131,18 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, positive_heatmap=None, barrier_radius=1, epoch=0):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
         self.seed_num = seed
         self.ship_pos_fixed = ship_pos_fixed
-        self.worker_id = worker_id
+        if positive_heatmap is not None:
+            self.positive_heat_map = True
+        else:
+            self.positive_heat_map = None
 
+        # 环境物理结构变量
         self.world = Box2D.b2World(gravity=(0, 0))
         self.barrier = []
         self.ship = None
@@ -142,6 +151,8 @@ class RoutePlan(gym.Env, EzPickle):
 
         # 障碍物数量
         self.barrier_num = barrier_num
+        self.barrier_radius = barrier_radius
+        self.epoch = epoch
         # 障碍物生成边界
         self.barrier_bound = 0.6
         self.dead_area_bound = 0.03
@@ -149,11 +160,17 @@ class RoutePlan(gym.Env, EzPickle):
 
         # game状态记录
         self.game_over = None
-        self.ground_contect = None
+        self.ground_contact = None
         self.dist_record = None
         self.draw_list = None
-        self.heat_map = None
         self.dist_norm = 14.38
+        self.dist_init = None
+
+        # heatmap生成状态记录
+        self.heatmap_mapping_ra = None
+        self.heatmap_mapping_bl = None
+        self.heat_map = None
+        self.pathFinding = None
 
         # useful range is -1 .. +1, but spikes can be higher
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(8,), dtype=np.float32)
@@ -184,7 +201,7 @@ class RoutePlan(gym.Env, EzPickle):
         self.world.contactListener_keepref = ContactDetector(self)
         self.world.contactListener = self.world.contactListener_keepref
         self.game_over = False
-        self.ground_contect = False
+        self.ground_contact = False
         self.dist_record = None
 
         W = VIEWPORT_W / SCALE
@@ -205,7 +222,7 @@ class RoutePlan(gym.Env, EzPickle):
              (-VIEWPORT_W/SCALE/2, VIEWPORT_H/SCALE/2)])
 
         """设置障碍物位置转移mesh"""
-        CHUNKS = 3
+        CHUNKS = 5
         start_center = (-(W/2 - W*0.2 - W * self.barrier_bound / CHUNKS * 1/2),
                         (H - (1 - self.barrier_bound) * 1/2 * H - (H * self.barrier_bound) / CHUNKS * 1/2))
         shift_x, shift_y = np.linspace(start_center[0], -start_center[0], CHUNKS),\
@@ -220,16 +237,16 @@ class RoutePlan(gym.Env, EzPickle):
             # 控制障碍物生成位置在圈定范围之内60％部分
             if self.seed_num is not None:
                 self.np_random.seed(self.seed_num)
-            random_noise_x = self.np_random.uniform(-W*self.barrier_bound*0.05, W*self.barrier_bound*0.05)
+            random_noise_x = self.np_random.uniform(-W*self.barrier_bound*0.02, W*self.barrier_bound*0.02)
             if self.seed_num is not None:
                 self.np_random.seed(self.seed_num)
-            random_noise_y = self.np_random.uniform(-H*self.barrier_bound*0.05, H*self.barrier_bound*0.05)
+            random_noise_y = self.np_random.uniform(-H*self.barrier_bound*0.02, H*self.barrier_bound*0.02)
             # 通过index选择障碍物位置
             self.barrier.append(
                 self.world.CreateStaticBody(shapes=b2CircleShape(
                     pos=(shift_x[idxbr // CHUNKS, idxbr % CHUNKS]+random_noise_x,
                          shift_y[idxbr // CHUNKS, idxbr % CHUNKS]+random_noise_y),
-                    radius=1)))
+                    radius=self.barrier_radius * self.np_random.uniform(0.2, 0.5))))
         #     x.append(shift_x[idxbr // CHUNKS, idxbr % CHUNKS])
         #     y.append(shift_y[idxbr // CHUNKS, idxbr % CHUNKS])
         # import matplotlib.pyplot as plt
@@ -238,6 +255,7 @@ class RoutePlan(gym.Env, EzPickle):
 
         """ship生成"""
         """!!!   已验证   !!!"""
+        initial_position_x, initial_position_y = None, None
         if self.ship_pos_fixed is None:
             if self.seed_num is not None:
                 self.np_random.seed(self.seed_num)
@@ -248,7 +266,8 @@ class RoutePlan(gym.Env, EzPickle):
             initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                         H * (1 - self.dead_area_bound))
         else:
-            initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], SHIP_POSITION[self.worker_id][1]
+            random_position = random.choice(SHIP_POSITION)
+            initial_position_x, initial_position_y = random_position[0], random_position[1]
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
@@ -256,11 +275,12 @@ class RoutePlan(gym.Env, EzPickle):
         linearDamping：线性阻尼
         #### 增加线性阻尼可以使物体行动有摩擦
         """
+
         self.ship = self.world.CreateDynamicBody(
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=1,
+            linearDamping=10,
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
@@ -271,8 +291,8 @@ class RoutePlan(gym.Env, EzPickle):
                 restitution=0.0)    # 0.99 bouncy
                 )
         self.ship.contact = False
-        self.ship.color_bg = PANEL[0]
-        self.ship.color_fg = PANEL[1]
+        self.ship.color_bg = PANEL[3]
+        self.ship.color_fg = PANEL[4]
         self.ship.ApplyForceToCenter((self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM),
                                       self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM)), wake=True)
 
@@ -280,7 +300,8 @@ class RoutePlan(gym.Env, EzPickle):
         # 设置抵达点位置
         reach_center_x = W/2 * 0.6
         reach_center_y = H*0.75
-        circle_shape = b2CircleShape(radius=0.85)
+        # circle_shape = b2CircleShape(radius=0.85)
+        circle_shape = b2PolygonShape(vertices=[(x/2, y/2) for x, y in REACH_POLY])
         self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
                                                       fixtures=b2FixtureDef(
                                                           shape=circle_shape
@@ -290,15 +311,37 @@ class RoutePlan(gym.Env, EzPickle):
 
         # reward Heatmap构建
         bound_list = self.barrier + [self.reach_area] + [self.ground]
-        heat_map_init = HeatMap(bound_list)
-        self.heat_map = heat_map_init.rewardCal(heat_map_init.bl)
-        # self.heat_map += heat_map_init.ground_rewardCal
-        self.heat_map += (heat_map_init.reach_rewardCal(heat_map_init.ra))
+        heat_map_init = HeatMap(bound_list, positive_reward=self.positive_heat_map)
+        self.pathFinding = heat_map_init.rewardCal4TraditionalMethod
+        self.heatmap_mapping_ra = heat_map_init.ra
+        self.heatmap_mapping_bl = heat_map_init.bl
+        self.heat_map = heat_map_init.rewardCal
+        self.heat_map += heat_map_init.ground_rewardCal_redesign
+        self.heat_map += heat_map_init.reach_rewardCal
+        self.heat_map = normalize(self.heat_map) - 1
+        """seaborn heatmap"""
         # import matplotlib.pyplot as plt
         # import seaborn as sns
         # fig, axes = plt.subplots(1, 1)
-        # sns.heatmap(self.heat_map, annot=False, ax=axes)
+        # sns.heatmap(self.heat_map.T, annot=False, ax=axes).invert_yaxis()
         # plt.show()
+        """matplotlib 3d heatmap"""
+        # from mpl_toolkits import mplot3d
+        # import matplotlib.pyplot as plt
+        # fig = plt.figure()
+        # ax = plt.axes(projection='3d')
+        # x, y = np.meshgrid(np.linspace(0, 79, 80), np.linspace(0, 79, 80))
+        # ax.plot_surface(x, y, self.heat_map.T, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
+        # plt.show()
+
+        end_info = b2Distance(shapeA=self.ship.fixtures[0].shape,
+                              idxA=0,
+                              shapeB=self.reach_area.fixtures[0].shape,
+                              idxB=0,
+                              transformA=self.ship.transform,
+                              transformB=self.reach_area.transform,
+                              useRadii=True)
+        self.dist_init = end_info.distance
         return self.step(np.array([0, 0]))
 
     def step(self, action_sample: np.array):
@@ -320,53 +363,55 @@ class RoutePlan(gym.Env, EzPickle):
         self.ship.ApplyForce(force2ship, force2position, True)
         self.world.Step(1.0 / FPS, 10, 10)
 
-        # # 取余操作在对负数取余时，在Python当中,如果取余的数不能够整除，那么负数取余后的结果和相同正数取余后的结果相加等于除数。
-        # # 将负数角度映射到正确的范围内
-        # if self.ship.angle < 0:
-        #     angle_unrotate = - ((b2_pi*2) - self.ship.angle % (b2_pi * 2))
-        # else:
-        #     angle_unrotate = self.ship.angle % (b2_pi * 2)
-        # # 角度映射到 [-pi, pi]
-        # if angle_unrotate < -b2_pi:
-        #     angle_unrotate += (b2_pi * 2)
-        # elif angle_unrotate > b2_pi:
-        #     angle_unrotate -= (b2_pi * 2)
-        #
-        # vel_temp = self.ship.linearVelocity
-        # # 计算船体行进方向的单位向量相对world向量
-        # ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
-        # # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
-        # vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
-        #
-        # # 11 维传感器数据字典
-        # sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
-        #                   'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
-        #                   'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
-        # """传感器扫描"""
-        # length = self.ship_radius * 10      # Set up the raycast line
-        # point1 = self.ship.position
-        # for vect in range(RAY_CAST_LASER_NUM):
-        #     ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
-        #     d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
-        #     point2 = point1 + d
-        #
-        #     # 初始化Raycast callback函数
-        #     callback = RayCastClosestCallback()
-        #
-        #     self.world.RayCast(callback, point1, point2)
-        #
-        #     if callback.hit:
-        #         sensor_raycast['points'][vect] = callback.point
-        #         sensor_raycast['normal'][vect] = callback.normal
-        #         if callback.fixture == self.reach_area.fixtures[0]:
-        #             sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
-        #         elif callback.fixture in self.ground.fixtures:
-        #             sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
-        #         else:
-        #             sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
-        #     else:
-        #         sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
-        # sensor_raycast['distance'][..., 1] /= self.ship_radius*10
+        """
+        # 取余操作在对负数取余时，在Python当中,如果取余的数不能够整除，那么负数取余后的结果和相同正数取余后的结果相加等于除数。
+        # 将负数角度映射到正确的范围内
+        if self.ship.angle < 0:
+            angle_unrotate = - ((b2_pi*2) - self.ship.angle % (b2_pi * 2))
+        else:
+            angle_unrotate = self.ship.angle % (b2_pi * 2)
+        # 角度映射到 [-pi, pi]
+        if angle_unrotate < -b2_pi:
+            angle_unrotate += (b2_pi * 2)
+        elif angle_unrotate > b2_pi:
+            angle_unrotate -= (b2_pi * 2)
+
+        vel_temp = self.ship.linearVelocity
+        # 计算船体行进方向的单位向量相对world向量
+        ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
+        # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
+        vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
+
+        # 11 维传感器数据字典
+        sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
+                          'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
+                          'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
+        # 传感器扫描
+        length = self.ship_radius * 10      # Set up the raycast line
+        point1 = self.ship.position
+        for vect in range(RAY_CAST_LASER_NUM):
+            ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
+            d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
+            point2 = point1 + d
+
+            # 初始化Raycast callback函数
+            callback = RayCastClosestCallback()
+
+            self.world.RayCast(callback, point1, point2)
+
+            if callback.hit:
+                sensor_raycast['points'][vect] = callback.point
+                sensor_raycast['normal'][vect] = callback.normal
+                if callback.fixture == self.reach_area.fixtures[0]:
+                    sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
+                elif callback.fixture in self.ground.fixtures:
+                    sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
+                else:
+                    sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
+            else:
+                sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
+        sensor_raycast['distance'][..., 1] /= self.ship_radius*10
+        """
 
         pos = self.ship.position
         try:
@@ -389,16 +434,18 @@ class RoutePlan(gym.Env, EzPickle):
         # ship速度计算
         vel_scalar = Distance_Cacul(vel, b2Vec2(0, 0))
 
+        """        
         # 状态值归一化
-        # state = [
-        #     (pos.x - self.reach_area.position.x)/8,
-        #     (pos.y - self.reach_area.position.y)/16,
-        #     vel_scalar,
-        #     end_ori/b2_pi,
-        #     end_info.distance/self.dist_norm,
-        #     [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
-        # ]
-        # assert len(state) == 6
+        state = [
+            (pos.x - self.reach_area.position.x)/8,
+            (pos.y - self.reach_area.position.y)/16,
+            vel_scalar,
+            end_ori/b2_pi,
+            end_info.distance/self.dist_norm,
+            [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
+        ]
+        assert len(state) == 6
+        """
         state = [
             end_info.distance,
             end_ori/b2_pi
@@ -409,34 +456,33 @@ class RoutePlan(gym.Env, EzPickle):
         done = False
 
         # ship投影方向速度reward计算
-        # if vel_scalar > 3.5:
-        #     reward_vel = -0.3
-        # elif vel_scalar < 0.5:
-        #     reward_vel = -0.5
-        # else:
-        #     reward_vel = 0
-
-        if self.dist_record is not None and self.dist_record <= end_info.distance:
-            reward_dist = -3
+        if vel_scalar > 5:
+            reward_vel = -0.5
         else:
-            reward_dist = 3
+            reward_vel = 0
+
+        if self.dist_record is not None and self.dist_record < end_info.distance:
+            reward_dist = -1
+        else:
+            # reward_dist = 1 - end_info.distance / self.dist_init
+            reward_dist = 2
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
-        # print(f'reward_heat:{reward_shaping:.1f}, reward_vel:{reward_unrotate:.1f}, reward_vel:{reward_vel:.1f}')
+        reward = self.heat_map[pos_mapping[0], pos_mapping[1]] + reward_dist
+        # print(f'reward_heat:{reward_shaping:.3f}, reward_dist: {reward_dist:.3f}')
 
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 100
+                reward = 10
                 done = True
-            elif self.ground_contect:
-                reward = -100
+            elif self.ground_contact:
+                reward = -10
                 done = True
             else:
-                reward = -10
+                reward = -5
                 done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
@@ -453,19 +499,18 @@ class RoutePlan(gym.Env, EzPickle):
                 trans = f.body.transform
                 if type(f.shape) is b2CircleShape:
                     t = rendering.Transform(translation=trans * f.shape.pos)
-                    # reach area区域渲染
-                    if hasattr(obj, 'color'):
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[4]).add_attr(t)
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[5], filled=False, linewidth=2).add_attr(t)
-                    else:
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[2]).add_attr(t)
-                        self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[3], filled=False, linewidth=2).add_attr(t)
+                    self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[2]).add_attr(t)
+                    self.viewer.draw_circle(f.shape.radius, 20, color=PANEL[3], filled=False, linewidth=2).add_attr(t)
                 else:
                     path = [trans * v for v in f.shape.vertices]
                     if hasattr(obj, 'color_bg'):
                         self.viewer.draw_polygon(path, color=obj.color_bg)
                         path.append(path[0])
                         self.viewer.draw_polyline(path, color=obj.color_fg, linewidth=2)
+                    elif hasattr(obj, 'color'):
+                        self.viewer.draw_polygon(path, color=PANEL[4])
+                        path.append(path[0])
+                        self.viewer.draw_polyline(path, color=PANEL[5], linewidth=2)
                     else:
                         self.viewer.draw_polygon(path, color=PANEL[4])
                         self.viewer.draw_polyline(path, color=PANEL[7], linewidth=10)
@@ -539,5 +584,31 @@ def demo_route_plan(env, seed=None, render=False):
     return total_reward
 
 
+def demo_TraditionalPathPlanning(env, seed=None, render=False):
+    env.seed(seed)
+    from pathfinding.core.diagonal_movement import DiagonalMovement
+    from pathfinding.core.grid import Grid
+    from pathfinding.finder.a_star import AStarFinder
+    from pathfinding.finder.dijkstra import DijkstraFinder
+    from pathfinding.finder.ida_star import IDAStarFinder
+    from PIL import Image, ImageDraw
+
+    grid = Grid(matrix=env.pathFinding)
+    ship_position = heat_map_trans(env.ship.position)
+    start_point = grid.node(ship_position[0], ship_position[1])
+    end_point = grid.node(env.heatmap_mapping_ra['position'][0], env.heatmap_mapping_ra['position'][1])
+
+    print(f'current height: {grid.height}, current width: {grid.width}')
+    finder = DijkstraFinder(diagonal_movement=DiagonalMovement.always)
+    start_time = time.time()
+    path, runs = finder.find_path(start_point, end_point, grid)
+    end_time = time.time() - start_time
+    print(end_time)
+    print('operations:', runs, 'path length:', len(path))
+    print(grid.grid_str(path=path, start=start_point, end=end_point))
+    print(path)
+
+
 if __name__ == '__main__':
-    demo_route_plan(RoutePlan(seed=42), render=True)
+    # demo_route_plan(RoutePlan(seed=42), render=True)
+    demo_TraditionalPathPlanning(RoutePlan(seed=42))

@@ -7,6 +7,20 @@ import torch
 import numpy as np
 from PIL import Image
 from skimage.color import rgb2gray
+from Envs.heatmap import normalize
+
+TIME_BOUNDARY = 500
+IMG_SIZE = (80, 80)
+IMG_SIZE_RENDEER = 480
+
+
+def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
+    remap_vect = np.array((vect[0] * ratio + (IMG_SIZE_RENDEER / 2), (-vect[1] * ratio) + IMG_SIZE_RENDEER), dtype=np.uint16)
+    return remap_vect
+
+# def heat_map_trans(vect, *, remap_sacle=REMAP_SACLE, ratio=REMAP_SACLE/ORG_SCALE):
+#     remap_vect = np.array((vect[0] * ratio + remap_sacle/2, vect[1] * ratio), dtype=np.uint8)
+#     return remap_vect
 
 
 # 数据帧叠加
@@ -24,7 +38,6 @@ def pixel_based(new_state, old_state, frame_num):
                                        axis=1)
     return new_frame_overlay
 
-
 def img_proc(img, resize=(80, 80)):
     img = Image.fromarray(img.astype(np.uint8))
     img = np.array(img.resize(resize, resample=Image.BILINEAR))
@@ -37,7 +50,8 @@ def img_proc(img, resize=(80, 80)):
     # img = img_ori.resize(resize, Image.ANTIALIAS)
     # img.show()
     img = rgb2gray(img).reshape(1, 1, 80, 80)
-    return img.copy()
+    img = normalize(img)
+    return img
 
 
 def record(global_ep, global_ep_r, ep_r, res_queue, worker_ep, name, idx):
@@ -56,7 +70,6 @@ def record(global_ep, global_ep_r, ep_r, res_queue, worker_ep, name, idx):
           f'EP_r: {global_ep_r.value}, '
           f'reward_ep: {ep_r}')
 
-
 def first_init(env, args):
     trace_history = []
     # 类装饰器不改变类内部调用方式
@@ -64,14 +77,13 @@ def first_init(env, args):
     '''利用广播机制初始化state帧叠加结构，不使用stack重复对数组进行操作'''
     obs = (np.ones((args.frame_overlay, args.state_length)) * obs).reshape(1, -1)
     pixel_obs_ori = env.render(mode='rgb_array')
-    pixel_obs = img_proc(pixel_obs_ori) * np.ones((1, 3, 80, 80))
+    pixel_obs = img_proc(pixel_obs_ori) * np.ones((1, args.frame_overlay, 80, 80))
     return trace_history, pixel_obs, obs, done
 
-# 参数初始化
-def layer_init(layer, *, mean=0, std=0.1):
-    torch.nn.init.normal_(layer.weight, mean=mean, std=std)
-    torch.nn.init.constant_(layer.bias, 0)
-    return layer
+
+def cut_requires_grad(params):
+    for param in params:
+        param.requires_grad = False
 
 
 def uniform_init(layer, *, a=-3e-3, b=3e-3):
@@ -116,4 +128,50 @@ class RunningMeanStd(object):
         self.count = new_count
 
 
+class ReplayBuffer:
+    def __init__(self, max_lens, frame_overlay, state_length, action_dim, device):
+        self.ptr = 0
+        self.size = 0
+        self.max_lens = max_lens
+        self.state_length = state_length
+        self.frame_overlay = frame_overlay
+        self.action_dim = action_dim
+        self.device = device
+        self.rwd_rms = RunningMeanStd()
+        self.pixel = np.zeros((self.max_lens, self.frame_overlay, 80, 80))
+        self.next_pixel = np.zeros((self.max_lens, self.frame_overlay, 80, 80))
+        self.vect = np.zeros((self.max_lens, self.state_length * self.frame_overlay))
+        self.next_vect = np.zeros((self.max_lens, self.state_length * self.frame_overlay))
+        self.reward = np.zeros((self.max_lens, 1))
+        self.action = np.zeros((self.max_lens, self.action_dim))
+        self.done = np.zeros((self.max_lens, 1))
+
+    def add(self, pixel, next_pixel, vect, next_vect, reward, action, done):
+        self.pixel[self.ptr] = pixel.astype(np.float32)
+        self.next_pixel[self.ptr] = next_pixel.astype(np.float32)
+        self.vect[self.ptr] = vect.astype(np.float32)
+        self.next_vect[self.ptr] = next_vect.astype(np.float32)
+        self.action[self.ptr] = action.astype(np.float32)
+        self.reward[self.ptr] = reward
+        self.done[self.ptr] = done
+        self.ptr = (self.ptr + 1) % self.max_lens
+        self.size = min(self.size + 1, self.max_lens)
+
+    def get_batch(self, batch_size):
+        ind = np.random.randint(0, self.size, size=batch_size)
+
+        # reward rms
+        reward = self.reward[ind]
+        # reward rms update
+        mean, std, count = reward.mean(), reward.std(), reward.shape[0]
+        self.rwd_rms.update_from_moments(mean, std**2, count)
+        reward = (reward - self.rwd_rms.mean) / (np.sqrt(self.rwd_rms.var) + 1e-4)
+
+        return (torch.FloatTensor(self.pixel[ind]).to(self.device),
+                torch.FloatTensor(self.next_pixel[ind]).to(self.device),
+                torch.FloatTensor(self.vect[ind]).to(self.device),
+                torch.FloatTensor(self.next_vect[ind]).to(self.device),
+                torch.FloatTensor(reward).to(self.device),
+                torch.FloatTensor(self.action[ind]).to(self.device),
+                torch.FloatTensor(self.done[ind]).to(self.device))
 
