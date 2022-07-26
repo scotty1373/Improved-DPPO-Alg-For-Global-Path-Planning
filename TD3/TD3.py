@@ -9,7 +9,8 @@ from itertools import chain
 from models.pixel_based import ActorModel, ActionCriticModel
 from utils_tools.utils import RunningMeanStd, cut_requires_grad
 
-DISTRIBUTION_INDEX = [0, 0.5]
+DISTRIBUTION_INDEX = [0, 0.3]
+ENV_RESET_BOUND = [50, 150, 300, 500]
 
 
 class TD3:
@@ -54,6 +55,9 @@ class TD3:
         self.actor_loss_history = 0.0
         self.critic_loss_history = 0.0
 
+        # 环境复杂度提升标志
+        self.complex = 0
+
     def _init(self, state_dim, action_dim, frame_overlay, root):
         self.actor_model = ActorModel(state_dim, action_dim, frame_overlay).to(self.device)
         self.critic_model = ActionCriticModel(state_dim, action_dim, frame_overlay).to(self.device)
@@ -67,8 +71,19 @@ class TD3:
             cut_requires_grad(self.actor_target.parameters())
             cut_requires_grad(self.critic_target.parameters())
 
-    def state_store_memory(self, pixel, vect, action, reward, next_pixel, next_vect, done):
-        self.memory.append((pixel, vect, action, reward, next_pixel, next_vect, done))
+    def reset_noise(self):
+        if self.ep <= 50:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-50) + 0.05)
+            self.target_model_regular_noise = Normal(0, 0.2)
+        elif 50 < self.ep <= 150:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-150) + 0.05)
+            self.target_model_regular_noise = Normal(0, 0.2)
+        elif 150 < self.ep <= 300:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-300) + 0.05)
+            self.target_model_regular_noise = Normal(0, 0.1)
+        elif 300 < self.ep <= 500:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-500) + 0.05)
+            self.target_model_regular_noise = Normal(0, 0.05)
 
     def get_action(self, pixel_state, vect_state):
         pixel = torch.FloatTensor(pixel_state).to(self.device)

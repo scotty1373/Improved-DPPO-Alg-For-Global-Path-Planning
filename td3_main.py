@@ -87,7 +87,7 @@ def parse_args():
 def main(args):
     args = args
     seed_torch()
-    device = torch.device('cuda')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # # Iter log初始化
     # logger_iter = log2json(filename='train_log_iter', type_json=True)
@@ -217,13 +217,24 @@ def main(args):
                             global_step=epoch,
                             dataformats='HWC')
         # 环境重置
-        if not epoch % 50:
+        if not epoch % 25:
             env.close()
-            env = RoutePlan(barrier_num=(epoch//150+1)*3, seed=seed, ship_pos_fixed=True)
+            env = RoutePlan(barrier_num=EnvBarrierReset(epoch, start_barrier_num=3), seed=seed, ship_pos_fixed=True)
             env = SkipEnvFrame(env, args.frame_skipping)
             agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
     env.close()
     tb_logger.close()
+
+
+def EnvBarrierReset(ep, *, start_barrier_num):
+    if ep <= 50:
+        return start_barrier_num
+    elif 50 < ep <= 150:
+        return start_barrier_num * 2
+    elif 150 < ep <= 300:
+        return start_barrier_num * 3
+    elif 300 < ep <= 500:
+        return start_barrier_num * 5
 
 
 if __name__ == '__main__':
