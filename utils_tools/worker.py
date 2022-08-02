@@ -23,7 +23,7 @@ def trace_trans(vect, *, ratio=IMG_SIZE_RENDEER/16):
 
 
 class worker(mp.Process):
-    def __init__(self, args, name, worker_id, g_net_pi, g_net_v, pipe_line, time_stamp=None):
+    def __init__(self, args, name, worker_id, g_net_pi, g_net_v, pipe_line, evt, time_stamp=None):
         super(worker, self).__init__()
         self.config = args
         self.workerID = worker_id
@@ -31,6 +31,7 @@ class worker(mp.Process):
         self.g_net_pi = g_net_pi
         self.g_net_v = g_net_v
         self.pipe_line = pipe_line
+        self.event = evt
         self.tb_logger = time_stamp
 
     def run(self):
@@ -172,7 +173,9 @@ class worker(mp.Process):
                 env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True, worker_id=self.workerID)
                 env = SkipEnvFrame(env, args.frame_skipping)
         env.close()
-        self.pipe_line.send(None)
+        while not self.event.is_set():
+            self.event.wait()
+        print(f'worker {self.workerID} is done, subprocess is terminated')
         self.pipe_line.close()
 
     def pull_from_global(self, subprocess):

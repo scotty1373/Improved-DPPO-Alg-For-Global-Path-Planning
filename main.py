@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import sys
+import time
+
 import numpy as np
 from PPO.PPO import PPO, PPO_Buffer
 from utils_tools.common import log2json, TIMESTAMP, seed_torch
@@ -19,7 +22,7 @@ def parse_args():
         description='PPO config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=2000)
+                        default=800)
     parser.add_argument('--train',
                         help='Train or not',
                         default=True)
@@ -58,7 +61,7 @@ def parse_args():
                         default='cpu')
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=5)
+                        default=3)
     args = parser.parse_args()
     return args
 
@@ -92,9 +95,16 @@ def main(args):
 
     training_buffer = PPO_Buffer()
 
-    pipe_r, pipe_w = zip(*[mp.Pipe() for _ in range(args.worker_num)])
-    worker_list = [worker(args, f'worker{i}', i, global_ppo.pi, global_ppo.v, pipe_w[i], TIMESTAMP) for i in range(args.worker_num)]
+    # 进程共享Event
+    event = mp.Event()
+
+    pipe_r, pipe_w = zip(*[mp.Pipe(duplex=False) for _ in range(args.worker_num)])
+    worker_list = [worker(args, f'worker{i}', i, global_ppo.pi, global_ppo.v, pipe_w[i], event, TIMESTAMP) for i in range(args.worker_num)]
     [worker_idx.start() for worker_idx in worker_list]
+
+    # Event Reset
+    event.set()
+    event.clear()
 
     epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')
     for epoch in epochs:
@@ -102,15 +112,12 @@ def main(args):
         # 从子线程中获取数据
         for step_i in steps:
             subprocess_buffer = pipe_r[step_i].recv()
-            if subprocess_buffer is None:
-                worker_list[step_i].join()
-            else:
-                training_buffer.collect_batch(subprocess_buffer.pixel_state,
-                                              subprocess_buffer.vect_state,
-                                              subprocess_buffer.action,
-                                              subprocess_buffer.logprob,
-                                              subprocess_buffer.d_reward,
-                                              subprocess_buffer.adv)
+            training_buffer.collect_batch(subprocess_buffer.pixel_state,
+                                          subprocess_buffer.vect_state,
+                                          subprocess_buffer.action,
+                                          subprocess_buffer.logprob,
+                                          subprocess_buffer.d_reward,
+                                          subprocess_buffer.adv)
             del subprocess_buffer
 
         # 参数更新
@@ -120,8 +127,15 @@ def main(args):
         global_ppo.c_sch.step()
         global_ppo.ep += 1
 
-    global_ppo.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
+        if epoch % 50 == 0:
+            global_ppo.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
+
     tb_logger.close()
+    # subProcess enable
+    event.set()
+    # join all subProcess
+    [i.join() for i in worker_list]
+    [i.terminate() for i in worker_list]
 
 
 if __name__ == '__main__':
