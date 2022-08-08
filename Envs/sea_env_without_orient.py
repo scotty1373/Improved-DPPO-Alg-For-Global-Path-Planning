@@ -125,6 +125,12 @@ class ContactDetector(b2ContactListener):
             self.env.ship.contact = False
 
 
+class PosIter:
+    def __init__(self, x):
+        self.val = x
+        self.next = None
+
+
 class RoutePlan(gym.Env, EzPickle):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
@@ -169,6 +175,10 @@ class RoutePlan(gym.Env, EzPickle):
         self.draw_list = None
         self.dist_norm = 14.38
         self.dist_init = None
+        self.iter_ship_pos = None
+
+        # 生成环形链表
+        self.loop_ship_posGenerator()
 
         # heatmap生成状态记录
         self.heatmap_mapping_ra = None
@@ -180,6 +190,14 @@ class RoutePlan(gym.Env, EzPickle):
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(8,), dtype=np.float32)
         self.action_space = spaces.Box(-1, +1, (2,), dtype=np.float32)
         self.reset()
+
+    def loop_ship_posGenerator(self):
+        self.iter_ship_pos = cur = PosIter(SHIP_POSITION[0])
+        for x in SHIP_POSITION:
+            tmp = PosIter(x)
+            cur.next = tmp
+            cur = tmp
+        cur.next = self.iter_ship_pos
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -307,9 +325,15 @@ class RoutePlan(gym.Env, EzPickle):
                 self.np_random.seed(self.seed_num)
             initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                         H * (1 - self.dead_area_bound))
-        else:
-            random_position = random.choice(SHIP_POSITION)
+        elif self.ship_pos_fixed is True:
+            random_position = self.iter_ship_pos.val
             initial_position_x, initial_position_y = random_position[0], random_position[1]
+            self.iter_ship_pos = self.iter_ship_pos.next
+        else:
+            initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
+                                                        -W * self.barrier_bound_x / 2)
+            initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
+                                                        H * (1 - self.dead_area_bound))
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
