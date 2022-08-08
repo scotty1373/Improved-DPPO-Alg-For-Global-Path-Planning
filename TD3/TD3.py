@@ -9,7 +9,7 @@ from itertools import chain
 from models.pixel_based import ActorModel, ActionCriticModel
 from utils_tools.utils import RunningMeanStd, cut_requires_grad
 
-DISTRIBUTION_INDEX = [0, 0.3]
+DISTRIBUTION_INDEX = [0, 0.5]
 ENV_RESET_BOUND = [50, 150, 300, 500]
 
 
@@ -72,17 +72,17 @@ class TD3:
             cut_requires_grad(self.critic_target.parameters())
 
     def reset_noise(self):
-        if self.ep <= 100:
-            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** self.ep + 0.05)
+        if 50 <= self.ep <= 100:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-50) + 0.05)
             self.target_model_regular_noise = Normal(0, 0.2)
-        elif 100 < self.ep <= 250:
-            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-100) + 0.05)
+        elif 150 < self.ep <= 250:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-150) + 0.05)
             self.target_model_regular_noise = Normal(0, 0.2)
-        elif 250 < self.ep <= 450:
-            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-250) + 0.05)
+        elif 300 < self.ep <= 450:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-300) + 0.05)
             self.target_model_regular_noise = Normal(0, 0.1)
-        elif 450 < self.ep:
-            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-450) + 0.05)
+        elif 500 < self.ep:
+            self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-500) + 0.05)
             self.target_model_regular_noise = Normal(0, 0.05)
 
     def get_action(self, pixel_state, vect_state):
@@ -91,7 +91,7 @@ class TD3:
         logits = self.actor_model(pixel, vect)
         if self.train:
             # acc 动作裁剪
-            logits[..., 0] = (logits[..., 0] + self.noise.sample()).clamp_(min=0, max=1)
+            logits[..., 0] = (logits[..., 0] + self.noise.sample()).clamp_(min=0.3, max=1)
             # ori 动做裁剪
             logits[..., 1] = (logits[..., 1] + self.noise.sample()).clamp_(min=self.action_space.min(),
                                                                            max=self.action_space.max())

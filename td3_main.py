@@ -51,7 +51,7 @@ def parse_args():
                         type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=128,
+                        default=64,
                         type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',

@@ -211,6 +211,10 @@ class RoutePlan(gym.Env, EzPickle):
             for idx, barr in enumerate(self.barrier):
                 self.world.DestroyBody(barr)
         self.barrier.clear()
+        if self.reef:
+            for reef in self.reef:
+                self.world.DestroyBody(reef)
+        self.reef.clear()
         # 清除reach area
         self.world.DestroyBody(self.reach_area)
         self.reach_area = None
@@ -220,12 +224,13 @@ class RoutePlan(gym.Env, EzPickle):
 
     def isValid(self, fixture_center, barrier_dict, reef_dict):
         for idx in range(self.barrier_num):
-            if Distance_Cacul(barrier_dict['center_point'][idx], fixture_center) > 2 * barrier_dict['radius'][idx]:
-                for idx_reef in range(len(reef_dict['center_point'])):
-                    if Distance_Cacul(reef_dict['center_point'][idx_reef], fixture_center) > 0.8:
-                        continue
-                    else:
-                        return False
+            if Distance_Cacul(barrier_dict['center_point'][idx], fixture_center) > 2.5 * barrier_dict['radius'][idx]:
+                continue
+            else:
+                return False
+        for idx_reef in range(len(reef_dict['center_point'])):
+            if Distance_Cacul(reef_dict['center_point'][idx_reef], fixture_center) > 1.25:
+                continue
             else:
                 return False
         return True
@@ -273,11 +278,7 @@ class RoutePlan(gym.Env, EzPickle):
         # x, y = [], []
         for idxbr in index[:-1]:
             # 控制障碍物生成位置在圈定范围之内60％部分
-            # if self.seed_num is not None:
-            #     self.np_random.seed(self.seed_num)
             random_noise_x = np.random.uniform(-W*self.barrier_bound_x*0.05, W*self.barrier_bound_x*0.05)
-            # if self.seed_num is not None:
-            #     self.np_random.seed(self.seed_num)
             random_noise_y = np.random.uniform(-H*self.barrier_bound_y*0.05, H*self.barrier_bound_y*0.05)
             # 通过index选择障碍物位置
             radius = self.barrier_radius * np.random.uniform(0.2 + 1.3**(-self.barrier_num), 0.5 + 1.08**(-self.barrier_num))
@@ -325,15 +326,10 @@ class RoutePlan(gym.Env, EzPickle):
                 self.np_random.seed(self.seed_num)
             initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                         H * (1 - self.dead_area_bound))
-        elif self.ship_pos_fixed is True:
+        else:
             random_position = self.iter_ship_pos.val
             initial_position_x, initial_position_y = random_position[0], random_position[1]
             self.iter_ship_pos = self.iter_ship_pos.next
-        else:
-            initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
-                                                        -W * self.barrier_bound_x / 2)
-            initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
-                                                        H * (1 - self.dead_area_bound))
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
