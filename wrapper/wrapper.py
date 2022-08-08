@@ -56,10 +56,11 @@ class SkipEnvFrame(gym.Wrapper):
         done, pixel, obs, info = None, None, None, None
         for i in range(self._skip):
             obs, reward, done, info = self.env.step(action)
-            pixel = self.env.render()
+            self.env.render()
             total_reward += reward
             if done:
                 break
+        pixel = self.env.render()
         return img_proc(pixel), obs, reward, done, info
 
     def reset(self, **kwargs):
