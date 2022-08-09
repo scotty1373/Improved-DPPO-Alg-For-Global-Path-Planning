@@ -96,7 +96,7 @@ class TD3:
             logits[..., 1] = (logits[..., 1] + self.noise.sample()).clamp_(min=self.action_space.min(),
                                                                            max=self.action_space.max())
         else:
-            logits[..., 0] = logits[..., 0].clamp_(min=0, max=1)
+            logits[..., 0] = logits[..., 0].clamp_(min=0.5, max=1)
             logits[..., 1] = logits[..., 1].clamp_(min=self.action_space.min(), max=self.action_space.max())
         return logits.detach().cpu().numpy()
 

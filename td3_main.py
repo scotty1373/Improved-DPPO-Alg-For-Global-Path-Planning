@@ -31,15 +31,15 @@ def parse_args():
                         type=int)
     parser.add_argument('--train',
                         help='Train or not',
-                        default=True,
+                        default=False,
                         type=bool)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
-                        default=False,
+                        default=True,
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default='./log/1659880443/save_model_ep650.pth',
+                        default='./log/1659972659/save_model_ep800.pth',
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',

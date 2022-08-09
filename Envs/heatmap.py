@@ -112,10 +112,10 @@ class HeatMap:
         :return: nd.ndarray matrix
         """
         heat_mat_collect = self.mat.copy()
-        heat_mat = self.mat.copy()
         barr_num = len(self.bl['position'])
         ratio = 3.5
         for idx_barr in range(barr_num):
+            heat_mat = self.mat.copy()
             # 判断输入障碍物坐标非法
             assert isinstance(self.bl['position'][idx_barr][0], np.uint8)
             assert isinstance(self.bl['position'][idx_barr][1], np.uint8)
