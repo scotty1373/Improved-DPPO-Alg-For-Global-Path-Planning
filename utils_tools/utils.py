@@ -7,7 +7,7 @@ import torch
 import numpy as np
 from PIL import Image
 from skimage.color import rgb2gray
-from Envs.heat_map import normalize
+from Envs.heatmap import normalize
 
 
 # 数据帧叠加

@@ -22,7 +22,7 @@ b2ContactListener：碰撞检测监听器
 import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
-from heat_map import HeatMap, heat_map_trans
+from .heatmap import HeatMap, heat_map_trans
 
 SCALE = 30
 FPS = 60

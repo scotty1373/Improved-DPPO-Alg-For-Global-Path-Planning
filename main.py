@@ -61,7 +61,7 @@ def parse_args():
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=4,
+                        default=2,
                         type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
