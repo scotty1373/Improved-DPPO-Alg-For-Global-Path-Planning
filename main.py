@@ -22,46 +22,59 @@ def parse_args():
         description='PPO config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=800)
+                        default=800,
+                        type=int)
     parser.add_argument('--train',
                         help='Train or not',
-                        default=True)
+                        default=True,
+                        type=bool)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
-                        default=False)
+                        default=False,
+                        type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default=None)
+                        default=None,
+                        type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=256)
+                        default=256,
+                        type=int)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42)
+                        default=42,
+                        type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=64)
+                        default=64,
+                        type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=3)
+                        default=3,
+                        type=int)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
-                        default=4)
+                        default=4,
+                        type=int)
     # parser.add_argument('--state_length',
     #                     help='state data vector length',
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=4)
+                        default=4,
+                        type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
-                        default=False)
+                        default=False,
+                        type=int)
     parser.add_argument('--device',
                         help='data device',
-                        default='cpu')
+                        default='cpu',
+                        type=str)
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=3)
+                        default=1,
+                        type=int)
     args = parser.parse_args()
     return args
 

@@ -203,14 +203,6 @@ class PPO:
 
         pi_entropy = pi_dist.entropy().mean(dim=1)
 
-        # [todo] 需要增加KL散度计算
-        beta = 1
-        kl_div = torch.nn.functional.kl_div(logprob, logprob_old, reduction='mean')
-        if kl_div >= 1.5 * self.kl_target:
-            beta = beta * 2
-        elif kl_div < self.kl_target / 1.5:
-            beta = beta / 2
-
         assert logprob.shape == logprob_old.shape
         ratio = torch.exp(torch.sum(logprob - logprob_old, dim=-1))
 
@@ -221,10 +213,19 @@ class PPO:
         surrogate1_acc = ratio * advantage
         surrogate2_acc = torch.clamp(ratio, 1-self.epsilon, 1+self.epsilon) * advantage
 
-        actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0] - kl_div * beta
+        # [todo] 需要增加KL散度计算
+        beta = 1
+        # kl_div = torch.nn.functional.kl_div(logprob, logprob_old, reduction='mean')
+        kl_approx_div = ((ratio - 1) - (logprob - logprob_old)).mean()
+        if kl_approx_div >= 1.5 * self.kl_target:
+            beta = beta * 2
+        elif kl_approx_div < self.kl_target / 1.5:
+            beta = beta / 2
+
+        actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
 
         self.a_opt.zero_grad()
-        actor_loss = -torch.mean(actor_loss)
+        actor_loss = -torch.mean(actor_loss) + kl_approx_div
         try:
             actor_loss.backward()
         except RuntimeError as e:
