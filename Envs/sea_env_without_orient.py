@@ -155,13 +155,14 @@ class RoutePlan(gym.Env, EzPickle):
             self.positive_heat_map = True
         else:
             self.positive_heat_map = None
+        self.hard_update = False
 
         # 障碍物数量
         self.barrier_num = barrier_num
         self.barrier_radius = barrier_radius
         # 障碍物生成边界
-        self.barrier_bound_x = 0.8
-        self.barrier_bound_y = 0.9
+        self.barrier_bound_x = 0.6
+        self.barrier_bound_y = 0.8
         self.dead_area_bound = 0.03
         self.ship_radius = 0.36*element_wise_weight
 
@@ -510,7 +511,7 @@ class RoutePlan(gym.Env, EzPickle):
             reward_dist = -1
         else:
             # reward_dist = 1 - end_info.distance / self.dist_init
-            reward_dist = 1
+            reward_dist = 2
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]

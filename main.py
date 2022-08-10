@@ -38,15 +38,15 @@ def parse_args():
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=256,
+                        default=512,
                         type=int)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42,
+                        default=97,
                         type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=64,
+                        default=128,
                         type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
@@ -73,7 +73,7 @@ def parse_args():
                         type=str)
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=1,
+                        default=5,
                         type=int)
     args = parser.parse_args()
     return args
