@@ -137,17 +137,13 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, positive_heatmap=None, barrier_radius=1):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None, positive_heatmap=None, barrier_radius=1):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
         self.seed_num = seed
         self.ship_pos_fixed = ship_pos_fixed
-        if positive_heatmap is not None:
-            self.positive_heat_map = True
-        else:
-            self.positive_heat_map = None
-        self.hard_update = False
+        self.worker_id = worker_id
 
         # 环境物理结构变量
         self.world = Box2D.b2World(gravity=(0, 0))
@@ -155,6 +151,10 @@ class RoutePlan(gym.Env, EzPickle):
         self.ship = None
         self.reach_area = None
         self.ground = None
+        if positive_heatmap is not None:
+            self.positive_heat_map = True
+        else:
+            self.positive_heat_map = None
 
         # 障碍物数量
         self.barrier_num = barrier_num
@@ -304,9 +304,7 @@ class RoutePlan(gym.Env, EzPickle):
             initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                         H * (1 - self.dead_area_bound))
         else:
-            random_position = self.iter_ship_pos.val
-            initial_position_x, initial_position_y = random_position[0], random_position[1]
-            self.iter_ship_pos = self.iter_ship_pos.next
+            initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], SHIP_POSITION[self.worker_id][1]
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
@@ -314,7 +312,6 @@ class RoutePlan(gym.Env, EzPickle):
         linearDamping：线性阻尼
         #### 增加线性阻尼可以使物体行动有摩擦
         """
-
         self.ship = self.world.CreateDynamicBody(
             position=(initial_position_x, initial_position_y),
             angle=0.0,
@@ -323,7 +320,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=3.5,
+                density=1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
