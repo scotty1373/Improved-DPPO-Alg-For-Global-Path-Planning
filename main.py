@@ -38,19 +38,19 @@ def parse_args():
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
-                        default=512,
+                        default=256,
                         type=int)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=97,
+                        default=42,
                         type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=128,
+                        default=64,
                         type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=3,
+                        default=4,
                         type=int)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
@@ -61,7 +61,7 @@ def parse_args():
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=2,
+                        default=4,
                         type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',

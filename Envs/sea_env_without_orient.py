@@ -321,7 +321,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=1,
+                density=2,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -484,19 +484,20 @@ class RoutePlan(gym.Env, EzPickle):
         #     [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
         # ]
         # assert len(state) == 6
-        # state = [
-        #     (pos.x - self.reach_area.position.x),
-        #     (pos.y - self.reach_area.position.y),
-        #     end_info.distance,
-        #     end_ori/b2_pi
-        # ]
-        # assert len(state) == 4
 
         state = [
+            (pos.x - self.reach_area.position.x),
+            (pos.y - self.reach_area.position.y),
             end_info.distance,
             end_ori/b2_pi
         ]
-        assert len(state) == 2
+        assert len(state) == 4
+
+        # state = [
+        #     end_info.distance,
+        #     end_ori/b2_pi
+        # ]
+        # assert len(state) == 2
 
         """Reward 计算"""
         done = False
@@ -511,12 +512,12 @@ class RoutePlan(gym.Env, EzPickle):
             reward_dist = -1
         else:
             # reward_dist = 1 - end_info.distance / self.dist_init
-            reward_dist = 2
+            reward_dist = 1
             self.dist_record = end_info.distance
 
         # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
 
-        reward = self.heat_map[pos_mapping[1], pos_mapping[0]] + reward_dist
+        reward = self.heat_map[pos_mapping[0], pos_mapping[1]] + reward_dist + reward_vel
         # print(f'reward_heat:{reward_shaping:.3f}, reward_dist: {reward_dist:.3f}')
 
         # 定义成功终止状态

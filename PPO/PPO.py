@@ -225,7 +225,7 @@ class PPO:
         actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
 
         self.a_opt.zero_grad()
-        actor_loss = -torch.mean(actor_loss) + kl_approx_div * beta - (pi_entropy * 0.001)
+        actor_loss = -torch.mean(actor_loss) + kl_approx_div * beta
         try:
             actor_loss.backward()
         except RuntimeError as e:

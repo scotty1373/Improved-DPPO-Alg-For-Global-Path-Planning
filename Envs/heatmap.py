@@ -113,7 +113,7 @@ class HeatMap:
         """
         heat_mat_collect = self.mat.copy()
         barr_num = len(self.bl['position'])
-        ratio = 3.5
+        ratio = 1.5
         for idx_barr in range(barr_num):
             heat_mat = self.mat.copy()
             # 判断输入障碍物坐标非法
