@@ -22,7 +22,7 @@ def parse_args():
         description='PPO config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=800,
+                        default=600,
                         type=int)
     parser.add_argument('--train',
                         help='Train or not',
@@ -46,11 +46,11 @@ def parse_args():
                         type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
-                        default=64,
+                        default=128,
                         type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=4,
+                        default=3,
                         type=int)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',

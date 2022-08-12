@@ -9,7 +9,7 @@ import Box2D
 from Box2D import (b2CircleShape, b2EdgeShape, b2PolygonShape)
 
 ORG_SCALE = 16
-REMAP_SACLE = 80
+REMAP_SACLE = 160
 RATIO = REMAP_SACLE/ORG_SCALE
 
 
@@ -113,7 +113,7 @@ class HeatMap:
         """
         heat_mat_collect = self.mat.copy()
         barr_num = len(self.bl['position'])
-        ratio = 1.5
+        ratio = 2.5
         for idx_barr in range(barr_num):
             heat_mat = self.mat.copy()
             # 判断输入障碍物坐标非法
@@ -192,13 +192,14 @@ class HeatMap:
         limit = 0.0625
 
         def is_inrange(num):
-            return num if not 80 * limit <= num < 80 * (1 - limit) else None
+            return num if not REMAP_SACLE * limit <= num < REMAP_SACLE * (1 - limit) else None
 
         # filter 会过滤掉返回的0和其他在Python中为None的类型数据, we start from 1
         linspace = [0] + list(filter(is_inrange, range(1, self.size[0])))
         linspace = np.array(linspace)
         limit_lower = self.size[0] * limit
         limit_upper = self.size[0] * (1-limit)
+        yaxis_bias = 3
         for row_offset in range(self.size[0]):
             for col_offset in range(self.size[0]):
                 if row_offset in linspace:
@@ -208,20 +209,20 @@ class HeatMap:
                                             limit_lower if col_offset<limit_lower else limit_upper)
                             dist = get_dist(target_point, (row_offset, col_offset))
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                                self.ground_pean * (1 / (-math.log(dist + 1) + yaxis_bias))
                         else:
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean*(1/(-math.log(row_offset-limit_upper+1)+5))
+                                self.ground_pean*(1/(-math.log(row_offset-limit_upper+1)+yaxis_bias))
                     else:
                         if col_offset < limit_lower or col_offset > limit_upper:
                             target_point = (limit_lower if row_offset<limit_lower else limit_upper,
                                             limit_lower if col_offset<limit_lower else limit_upper)
                             dist = get_dist(target_point, (row_offset, col_offset))
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                                self.ground_pean * (1 / (-math.log(dist + 1) + yaxis_bias))
                         else:
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean*(1/(-math.log(-(row_offset-limit_lower)+1)+5))
+                                self.ground_pean*(1/(-math.log(-(row_offset-limit_lower)+1)+yaxis_bias))
                 if col_offset in linspace:
                     if col_offset >= limit_upper:
                         if row_offset < limit_lower or row_offset > limit_upper:
@@ -229,20 +230,20 @@ class HeatMap:
                                             limit_lower if col_offset<limit_lower else limit_upper)
                             dist = get_dist(target_point, (row_offset, col_offset))
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                                self.ground_pean * (1 / (-math.log(dist + 1) + yaxis_bias))
                         else:
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean*(1/(-math.log(col_offset-limit_upper+1)+5))
+                                self.ground_pean*(1/(-math.log(col_offset-limit_upper+1)+yaxis_bias))
                     else:
                         if row_offset < limit_lower or row_offset > limit_upper:
                             target_point = (limit_lower if row_offset < limit_lower else limit_upper,
                                             limit_lower if col_offset < limit_lower else limit_upper)
                             dist = get_dist(target_point, (row_offset, col_offset))
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean * (1 / (-math.log(dist + 1) + 5))
+                                self.ground_pean * (1 / (-math.log(dist + 1) + yaxis_bias))
                         else:
                             _mat[row_offset, col_offset] = \
-                                self.ground_pean*(1/(-math.log(-(col_offset-limit_lower)+1)+5))
+                                self.ground_pean*(1/(-math.log(-(col_offset-limit_lower)+1)+yaxis_bias))
         return normalize(_mat) - 1
 
     @property

@@ -3,6 +3,7 @@
 # @Author : Scotty1373
 # @File : sea_env.py
 # @Software : PyCharm
+import copy
 import math
 import random
 import time
@@ -321,7 +322,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=2,
+                density=1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -372,7 +373,7 @@ class RoutePlan(gym.Env, EzPickle):
         # import matplotlib.pyplot as plt
         # fig = plt.figure()
         # ax = plt.axes(projection='3d')
-        # x, y = np.meshgrid(np.linspace(0, 79, 80), np.linspace(0, 79, 80))
+        # x, y = np.meshgrid(np.linspace(0, 159, 160), np.linspace(0, 159, 160))
         # ax.plot_surface(x, y, self.heat_map.T, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
         # plt.show()
 
@@ -384,10 +385,15 @@ class RoutePlan(gym.Env, EzPickle):
                               transformB=self.reach_area.transform,
                               useRadii=True)
         self.dist_init = end_info.distance
-        return self.step(self.np_random.uniform(-1, 1, size=(2,)))
+        return self.step(np.array([0, 0]))
+        # return self.step(self.np_random.uniform(-1, 1, size=(2,)))
 
-    def step(self, action_sample: np.array):
-        action_sample = np.clip(action_sample, -1, 1).astype('float32')
+    def step(self, act: np.array):
+        action_sample = copy.deepcopy(act)
+        # action_sample = np.clip(action_sample, -1, 1).astype('float32')
+        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0.3, a_max=1).astype('float32')
+        # beta distribution sample remap to -1,1
+        action_sample[..., 1] = np.clip(action_sample[..., 1]*2-1, a_min=-1, a_max=1).astype('float32')
 
         if not self.ship:
             return
@@ -469,7 +475,6 @@ class RoutePlan(gym.Env, EzPickle):
                               transformB=self.reach_area.transform,
                               useRadii=True)
         end_ori = Orient_Cacul(end_info[1], end_info[0])
-        # print(end_info[2])
 
         # ship速度计算
         vel_scalar = Distance_Cacul(vel, b2Vec2(0, 0))
@@ -509,15 +514,16 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         if self.dist_record is not None and self.dist_record < end_info.distance:
-            reward_dist = -1
+            reward_dist = -end_info.distance / self.dist_init
+            # reward_dist = -1
         else:
-            # reward_dist = 1 - end_info.distance / self.dist_init
-            reward_dist = 1
+            reward_dist = 1 - end_info.distance / self.dist_init
+            # reward_dist = 1
             self.dist_record = end_info.distance
 
-        # reward_shaping = self.heat_map[pos_mapping[1], pos_mapping[0]]
+        reward_shaping = self.heat_map[pos_mapping[0], pos_mapping[1]]
 
-        reward = self.heat_map[pos_mapping[0], pos_mapping[1]] + reward_dist + reward_vel
+        reward = self.heat_map[pos_mapping[0], pos_mapping[1]] + reward_dist
         # print(f'reward_heat:{reward_shaping:.3f}, reward_dist: {reward_dist:.3f}')
 
         # 定义成功终止状态

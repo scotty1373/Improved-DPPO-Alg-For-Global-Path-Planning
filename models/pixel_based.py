@@ -6,7 +6,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.distributions import Normal
+from torch.distributions import Normal, Beta
 import numpy as np
 from utils_tools.utils import uniform_init, orthogonal_init
 
@@ -50,6 +50,9 @@ class ActorModel(nn.Module):
         self.log_std1 = nn.Linear(400 + 100, 200)
         self.log_std2 = nn.Linear(200, self.action_dim)
         nn.init.normal_(self.log_std1.weight, -3e-4, 3e-4)
+        # nn.init.constant_(self.log_std1.bias, 0.0)
+        # nn.init.normal_(self.log_std2.weight, -3e-4, 3e-4)
+        # nn.init.normal_(self.log_std2.bias, 0.0)
 
         extractor = [self.conv1, self.actv1,
                      self.conv2, self.actv2,
@@ -76,8 +79,7 @@ class ActorModel(nn.Module):
         action_mean = torch.cat((action_mean, state_vect), dim=-1)
         action_mean = self.mean_fc2(action_mean)
         action_mean = self.mean_fc3(action_mean)
-        action_mean[..., 0] = self.mean_fc3act_acc(action_mean[..., 0])
-        action_mean[..., 1] = self.mean_fc3act_ori(action_mean[..., 1])
+        action_mean = nn.functional.softplus(action_mean)
 
         action_std = self.log_std(common_vect)
         action_std = nn.functional.relu(action_std, inplace=True)
@@ -88,12 +90,13 @@ class ActorModel(nn.Module):
         action_std = nn.functional.softplus(action_std)
 
         try:
-            dist = Normal(action_mean, action_std + 1e-4)
+            # dist = Normal(action_mean, action_std + 1e-4)
+            dist = Beta(action_mean+1, action_std+1)
         except RuntimeError as e:
             print('CUDA error')
         action_sample = dist.sample()
-        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
-        action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
+        # action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
+        # action_sample[..., 1] = torch.clamp(action_sample[..., 1]*2-1, -1, 1)
         action_logprob = dist.log_prob(action_sample)
 
         return action_sample, action_logprob, dist
@@ -119,16 +122,16 @@ class CriticModel(nn.Module):
         self.actv4 = nn.ReLU(inplace=True)
 
         self.fc_state = nn.Sequential(
-            nn.Linear(self.state_dim, 100),
+            nn.Linear(self.state_dim, 200),
             nn.ReLU(inplace=True)
         )
         self.fc = nn.Sequential(
-            orthogonal_init(nn.Linear(1024+100, 400), gain=np.sqrt(2)),
+            orthogonal_init(nn.Linear(1024+200, 400), gain=np.sqrt(2)),
             nn.ReLU(inplace=True))
         self.fc2 = nn.Sequential(
-            orthogonal_init(nn.Linear(400+100, 64), gain=0.01),
+            orthogonal_init(nn.Linear(400+200, 200), gain=0.01),
             nn.ReLU(inplace=True),
-            orthogonal_init(nn.Linear(64, 1), gain=0.01))
+            orthogonal_init(nn.Linear(200, 1), gain=0.01))
 
         extractor = [self.conv1, self.actv1,
                      self.conv2, self.actv2,

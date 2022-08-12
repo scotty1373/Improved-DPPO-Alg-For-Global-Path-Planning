@@ -122,7 +122,7 @@ class worker(mp.Process):
                         agent.memory.clear()
                         done = True
 
-                entropy_temp = dist.entropy().cpu().numpy().squeeze()
+                entropy_temp = dist.mean.cpu().numpy().squeeze()
                 entropy_acc = entropy_temp[0].item()
                 entropy_ori = entropy_temp[1].item()
                 # 记录timestep, reward＿sum
@@ -158,12 +158,12 @@ class worker(mp.Process):
             tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_reward',
                                  scalar_value=reward_history,
                                  global_step=epoch)
-            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_acc',
-                                 scalar_value=log_ep_text["entropy_acc_mean"],
-                                 global_step=epoch)
-            tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_ori',
-                                 scalar_value=log_ep_text["entropy_ori_mean"],
-                                 global_step=epoch)
+            # tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_acc',
+            #                      scalar_value=log_ep_text["entropy_acc_mean"],
+            #                      global_step=epoch)
+            # tb_logger.add_scalar(tag=f'Reward_{self.name}/ep_entropy_ori',
+            #                      scalar_value=log_ep_text["entropy_ori_mean"],
+            #                      global_step=epoch)
             tb_logger.add_image(tag=f'Image_{self.name}/Trace',
                                 img_tensor=np.array(trace_image),
                                 global_step=epoch,
