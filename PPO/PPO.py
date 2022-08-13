@@ -106,8 +106,8 @@ class PPO:
         self.kl_target = 0.01
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
-        self.c_sch = torch.optim.lr_scheduler.MultiStepLR(self.c_opt, milestones=[120, 500], gamma=0.1)
-        self.a_sch = torch.optim.lr_scheduler.MultiStepLR(self.a_opt, milestones=[120, 490], gamma=0.1)
+        self.c_sch = torch.optim.lr_scheduler.MultiStepLR(self.c_opt, milestones=[120, 400], gamma=0.1)
+        self.a_sch = torch.optim.lr_scheduler.MultiStepLR(self.a_opt, milestones=[120, 390], gamma=0.1)
 
         # training configuration
         self.state_rms = RunningMeanStd(shape=(1, self.frame_overlay, 80, 80))
