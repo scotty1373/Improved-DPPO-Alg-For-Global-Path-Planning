@@ -27,15 +27,15 @@ def parse_args():
         description='TD3 config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=1000,
+                        default=800,
                         type=int)
     parser.add_argument('--train',
                         help='Train or not',
-                        default=False,
+                        default=True,
                         type=bool)
     parser.add_argument('--pre_train',
                         help='Pretrained?',
-                        default=True,
+                        default=False,
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
@@ -228,13 +228,13 @@ def main(args):
 
 
 def EnvBarrierReset(ep, *, start_barrier_num, train=True):
-    if ep <= 100 and train:
+    if ep < 100 and train:
         return start_barrier_num
-    elif 100 < ep <= 250:
+    elif 100 <= ep < 250:
         return start_barrier_num * 2
-    elif 250 < ep <= 450:
+    elif 250 <= ep < 450:
         return start_barrier_num * 3
-    elif 450 < ep or not train:
+    elif 450 <= ep or not train:
         return start_barrier_num * 5
 
 

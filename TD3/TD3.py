@@ -72,7 +72,8 @@ class TD3:
             cut_requires_grad(self.critic_target.parameters())
 
     def reset_noise(self):
-        if 50 <= self.ep <= 100:
+        # 难度提升前50幕不做噪声衰减
+        if 50 < self.ep <= 100:
             self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-50) + 0.05)
             self.target_model_regular_noise = Normal(0, 0.2)
         elif 150 < self.ep <= 250:

@@ -3,6 +3,7 @@
 # @Author : Scotty1373
 # @File : sea_env.py
 # @Software : PyCharm
+import copy
 import math
 import random
 import time
@@ -397,7 +398,7 @@ class RoutePlan(gym.Env, EzPickle):
         # import matplotlib.pyplot as plt
         # fig = plt.figure()
         # ax = plt.axes(projection='3d')
-        # x, y = np.meshgrid(np.linspace(0, 79, 80), np.linspace(0, 79, 80))
+        # x, y = np.meshgrid(np.linspace(0, 159, 160), np.linspace(0, 159, 160))
         # ax.plot_surface(x, y, self.heat_map.T, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
         # plt.show()
 
