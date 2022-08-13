@@ -79,7 +79,9 @@ class ActorModel(nn.Module):
         action_mean = torch.cat((action_mean, state_vect), dim=-1)
         action_mean = self.mean_fc2(action_mean)
         action_mean = self.mean_fc3(action_mean)
-        action_mean = nn.functional.softplus(action_mean)
+        action_mean[..., 0] = self.mean_fc3act_acc(action_mean[..., 0])
+        action_mean[..., 1] = self.mean_fc3act_ori(action_mean[..., 1])
+        # action_mean = nn.functional.softplus(action_mean)
 
         action_std = self.log_std(common_vect)
         action_std = nn.functional.relu(action_std, inplace=True)
@@ -90,13 +92,13 @@ class ActorModel(nn.Module):
         action_std = nn.functional.softplus(action_std)
 
         try:
-            # dist = Normal(action_mean, action_std + 1e-4)
-            dist = Beta(action_mean+1, action_std+1)
+            dist = Normal(action_mean, action_std + 1e-4)
+            # dist = Beta(action_mean+1, action_std+1)
         except RuntimeError as e:
             print('CUDA error')
         action_sample = dist.sample()
-        # action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
-        # action_sample[..., 1] = torch.clamp(action_sample[..., 1]*2-1, -1, 1)
+        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
+        action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
         action_logprob = dist.log_prob(action_sample)
 
         return action_sample, action_logprob, dist
