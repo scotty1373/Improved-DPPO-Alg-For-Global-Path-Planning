@@ -113,12 +113,6 @@ def main(args):
     env = SkipEnvFrame(env, args.frame_skipping)
     assert isinstance(args.batch_size, int)
 
-    # 子线程显示当前环境heatmap
-    fig, ax1 = plt.subplots(1, 1)
-    sns.heatmap(env.env.heat_map.T, ax=ax1).invert_yaxis()
-    fig.suptitle('reward shaping heatmap')
-    tb_logger.add_figure('figure', fig)
-
     """初始化agent"""
     agent = TD3(frame_overlay=args.frame_overlay,
                 state_length=args.state_length,
@@ -128,6 +122,18 @@ def main(args):
                 device=device,
                 train=args.train,
                 logger=tb_logger)
+
+    def heatmap4tb_logger(*, ep=0):
+        # 子线程显示当前环境heatmap
+        fig, ax1 = plt.subplots(1, 1)
+        sns.heatmap(env.env.heat_map.T, ax=ax1).invert_yaxis()
+        fig.suptitle(f'reward shaping heatmap_{agent.stage}')
+        tb_logger.add_figure(tag='figure',
+                             figure=fig,
+                             global_step=ep)
+
+    # heatmap plot in tensorboard logger
+    heatmap4tb_logger()
 
     # pretrained 选项，载入预训练模型
     if args.pre_train:
@@ -210,10 +216,10 @@ def main(args):
         agent.reset_noise()
 
         # tensorboard logger
-        tb_logger.add_scalar(tag=f'Reward/ep_reward',
+        tb_logger.add_scalar(tag=f'Reward/ep_reward_{agent.stage}',
                              scalar_value=reward_history,
                              global_step=epoch)
-        tb_logger.add_image(tag=f'Image/Trace',
+        tb_logger.add_image(tag=f'Image/Trace_{agent.stage}',
                             img_tensor=np.array(trace_image),
                             global_step=epoch,
                             dataformats='HWC')
@@ -222,7 +228,14 @@ def main(args):
             env.close()
             env = RoutePlan(barrier_num=EnvBarrierReset(epoch, start_barrier_num=3, train=args.train), seed=seed, ship_pos_fixed=True)
             env = SkipEnvFrame(env, args.frame_skipping)
-            agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}.pth')
+            if agent.logger_reload:
+                # reload changed heatmap
+                heatmap4tb_logger(ep=epoch)
+                # reload route trace image
+                trace_image = env.render(mode='rgb_array')
+                trace_image = Image.fromarray(trace_image)
+                trace_path = ImageDraw.Draw(trace_image)
+            agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}_opt-{args.seed}_{args.batch_size}_{args.state_length}.pth')
     env.close()
     tb_logger.close()
 

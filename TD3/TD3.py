@@ -9,8 +9,8 @@ from itertools import chain
 from models.pixel_based import ActorModel, ActionCriticModel
 from utils_tools.utils import RunningMeanStd, cut_requires_grad
 
-DISTRIBUTION_INDEX = [0, 0.5]
-ENV_RESET_BOUND = [50, 150, 300, 500]
+DISTRIBUTION_INDEX = [0, 0.3]
+STAGE = [0, 150, 300, 500]
 
 
 class TD3:
@@ -35,7 +35,7 @@ class TD3:
         self.lr_actor = 1e-5
         self.lr_critic = 1e-5
         self.start_train = 2000
-        self.discount_index = 0.95
+        self.discount_index = 0.98
         self.smooth_regular = 0.2
         self.delay_update = 5
         self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1])
@@ -56,7 +56,8 @@ class TD3:
         self.critic_loss_history = 0.0
 
         # 环境复杂度提升标志
-        self.complex = 0
+        self.logger_reload = None
+        self.stage = 0
 
     def _init(self, state_dim, action_dim, frame_overlay, root):
         self.actor_model = ActorModel(state_dim, action_dim, frame_overlay).to(self.device)
@@ -85,6 +86,12 @@ class TD3:
         elif 500 < self.ep:
             self.noise = Normal(DISTRIBUTION_INDEX[0], DISTRIBUTION_INDEX[1] * 0.98 ** (self.ep-500) + 0.05)
             self.target_model_regular_noise = Normal(0, 0.05)
+        self.stage_record()
+
+    def stage_record(self):
+        if self.ep in STAGE:
+            self.stage = STAGE.index(self.ep)
+            self.logger_reload = True
 
     def get_action(self, pixel_state, vect_state):
         pixel = torch.FloatTensor(pixel_state).to(self.device)

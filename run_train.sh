@@ -1,0 +1,2 @@
+python td3_main.py --epochs 800 --train True --pre_train False --max_timestep 512 --batch_size 64 --frame_skipping 4;
+python td3_main.py --epochs 800 --train True --pre_train False --max_timestep 512 --batch_size 128 --frame_skipping 4&
