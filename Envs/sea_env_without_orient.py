@@ -138,13 +138,15 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None, positive_heatmap=None, barrier_radius=1):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, worker_id=None, positive_heatmap=None, barrier_radius=1, test=False):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
         self.seed_num = seed
         self.ship_pos_fixed = ship_pos_fixed
         self.worker_id = worker_id
+        self.test = test
+        self.end = False
 
         # 环境物理结构变量
         self.world = Box2D.b2World(gravity=(0, 0))
@@ -197,7 +199,10 @@ class RoutePlan(gym.Env, EzPickle):
             tmp = PosIter(x)
             cur.next = tmp
             cur = tmp
-        cur.next = self.iter_ship_pos
+        if self.test:
+            pass
+        else:
+            cur.next = self.iter_ship_pos
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -306,7 +311,12 @@ class RoutePlan(gym.Env, EzPickle):
             initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                         H * (1 - self.dead_area_bound))
         else:
-            initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], SHIP_POSITION[self.worker_id][1]
+            random_position = self.iter_ship_pos.val
+            initial_position_x, initial_position_y = random_position[0], random_position[1]
+            if self.iter_ship_pos.next is None:
+                self.end = True
+            else:
+                self.iter_ship_pos = self.iter_ship_pos.next
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
