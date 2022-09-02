@@ -73,7 +73,7 @@ def parse_args():
                         type=str)
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=5,
+                        default=2,
                         type=int)
     args = parser.parse_args()
     return args
