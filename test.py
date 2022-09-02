@@ -98,7 +98,7 @@ def main(args):
         os.makedirs(f'./log/{TIMESTAMP}/')
 
     # 环境与agent初始化
-    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True, worker_id=None, test=True)
+    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True, worker_id=None, worker_num=1, test=True)
     # env.seed(13)
     env = SkipEnvFrame(env, args.frame_skipping)
     assert isinstance(args.batch_size, int)
