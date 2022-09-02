@@ -14,6 +14,7 @@ import seaborn as sns
 from utils_tools.common import seed_torch
 import argparse
 import torch
+import cv2
 
 TIME_BOUNDARY = 500
 IMG_SIZE = (80, 80)
@@ -37,7 +38,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1662016523/save_model_ep550.pth",
+                        default="./log/1660370992/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -181,7 +182,8 @@ def main(args):
                 trace_image = Image.fromarray(trace_image)
                 trace_path = ImageDraw.Draw(trace_image)
                 trace_path.point(trace_history, fill='Black')
-                # trace_path.line(trace_history, width=10, fill='blue')
+                trace_path.line(trace_history, width=1, fill='blue')
+                # cv2_lines(np.array(trace_image), trace_history)
                 trace_image.save(f'./log/{TIMESTAMP}/track_{t}.png', quality=95)
             if env.env.end:
                 sys.exit()
@@ -194,6 +196,17 @@ def main(args):
                        'entropy_ori_mean': entropy_ori_history / args.max_timestep}
 
     env.close()
+
+
+def cv2_lines(img: np.ndarray, trace_path: list):
+    # line
+    # for idx, pos in enumerate(trace_path[1:]):
+    #     img = cv2.line(img, pos, trace_path[idx], (255, 0, 0), 1)
+    # mini circle
+    for pos in trace_path:
+        img = cv2.circle(img, pos, 1, (0, 0, 255), 0)
+    tmp = Image.fromarray(img)
+    tmp.show()
 
 
 if __name__ == '__main__':
