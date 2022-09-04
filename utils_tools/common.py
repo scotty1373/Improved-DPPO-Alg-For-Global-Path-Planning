@@ -14,8 +14,8 @@ from sys import platform
 TIMESTAMP = str(round(time.time()))
 KEYs_Train = ['epochs', 'time_step', 'ep_reward', 'entropy_mean']
 
-FILE_NAME = ['../log/1652439582/train_log_ep1652439582.json']
-
+FILE_NAME = '../log/ppo_multi_normal'
+# FILE_NAME = '../log/ppo_origin'
 
 class log2json:
     def __init__(self, filename='train_log', type_json=True, log_path='log', logger_keys=None):
@@ -71,31 +71,42 @@ class visualize_result:
                 json_line_str = fp.readline().rstrip('\n')
                 if not json_line_str:
                     break
-                temp_dict = json_line_extract(json_line_str)
+                _, temp_dict = json_line_extract(json_line_str)
                 for key_iter in result_train.keys():
                     result_train[key_iter].append(temp_dict[key_iter])
 
+        assert len(result_train['mode']) == len(result_train['ep_reward'])
         df_train = pd.DataFrame.from_dict(result_train)
         df_train.head()
         return df_train
 
-    @staticmethod
-    def reward(logDataFrame):
-        for temp in logDataFrame:
-            try:
-                del temp['time_step']
-            except KeyError as e:
-                print('!!!Pandas Dataframe Keys Not Found!!!')
+    # @staticmethod
+    def reward(self, logDataFrame):
+        col = logDataFrame[0].shape[0]
+        df_collect = pd.DataFrame(np.zeros((len(logDataFrame) * logDataFrame[0].shape[0], 3)),
+                                  columns=['epochs', 'worker', 'ep_reward'])
 
-        df_insert = logDataFrame[0]
-        for idx, df_log in enumerate(logDataFrame[1:]):
-            df_insert.insert(idx, f'ep_reward_{idx}', df_log['ep_reward'])
-        df_insert.head()
-        df_insert = pd.melt(df_insert, 'epochs', var_name='workers', value_name='ep_reward')
+        for idx, df_log in enumerate(logDataFrame):
+            df_collect.iloc[idx*col:(idx+1)*col, 0] = df_log['epochs']
+            df_collect['worker'][idx * col:(idx + 1) * col] = f'worker_{idx}'
+            smooth_data = self._tensorboard_smoothing(df_log['ep_reward'], 0.9)
+            df_collect.iloc[idx * col:(idx + 1) * col, 2] = smooth_data
+        df_collect.head()
+        # df_insert = pd.melt(df_insert, 'epochs', var_name='workers', value_name='ep_reward')
 
-        sns.lineplot(data=df_insert, x='epochs', y='ep_reward')
-        # plt.xticks(np.linspace(0, df_train.index.values.max()*100, (df_train.index.values.max() + 1)))
-        plt.xlabel('epochs')
+        sns.set_style('darkgrid')
+        sns.set_context('paper')
+        figure = sns.lineplot(data=df_collect, x='epochs', y='ep_reward', hue='worker')
+        figure.set_xlim(0, logDataFrame[0].shape[0])
+        figure.set_ylim(-1500, 400)
+        figure.set_yticks([-1500, -1000, -500, 0, 400])
+        plt.xlabel('epoch', fontdict={'weight': 'bold',
+                                      'size': 12})
+        plt.ylabel('ep_reward', fontdict={'weight': 'bold', 'size': 12})
+        # plt.subplots_adjust(left=0.2, bottom=0.2)
+        # plt.title(y_trick, fontdict={'weight': 'bold',
+        #                              'size': 20})
+        # plt.legend(labels=['ppo ep reward'], loc='lower right', fontsize=10)
         plt.show()
 
     def uni_loss(self):
@@ -103,6 +114,27 @@ class visualize_result:
 
     def average_value(self):
         pass
+
+    def _tensorboard_smoothing(self, values, smooth=0.9):
+        # [0.81 0.9 1]. res[2] = (0.81 * values[0] + 0.9 * values[1] + values[2]) / 2.71
+        norm_factor = smooth + 1
+        x = values[0]
+        res = [x]
+        for i in range(1, len(values)):
+            x = x * smooth + values[i]  # 指数衰减
+            res.append(x / norm_factor)
+
+            norm_factor *= smooth
+            norm_factor += 1
+
+        return res
+
+    @staticmethod
+    def dataframe_collect(file_name):
+        df_train = pd.read_csv(file_name)
+        df_train = df_train.drop(columns='Wall time')
+        df_train.columns = ['epochs', 'ep_reward']
+        return df_train
 
 
 def dirs_creat():
@@ -141,7 +173,9 @@ def json_line_extract(json_format_str):
 if __name__ == '__main__':
     vg = visualize_result()
     df = []
-    for fp in FILE_NAME:
-        df.append(vg.json2DataFrame(fp))
+    file_list = os.listdir(FILE_NAME)
+    for fp in file_list:
+        path_csv_log = FILE_NAME + '/' + fp
+        df.append(vg.dataframe_collect(path_csv_log))
 
     vg.reward(df)
