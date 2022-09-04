@@ -170,7 +170,7 @@ class worker(mp.Process):
                                 dataformats='HWC')
             if not epoch % 50:
                 env.close()
-                env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True, worker_id=self.workerID)
+                env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True, worker_id=self.workerID, worker_num=args.worker_num)
                 env = SkipEnvFrame(env, args.frame_skipping)
         env.close()
         while not self.event.is_set():
