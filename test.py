@@ -10,6 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 from utils_tools.common import TIMESTAMP
+from Envs.sea_env_without_orient import Distance_Cacul
 import seaborn as sns
 from utils_tools.common import seed_torch
 import argparse
@@ -38,7 +39,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1660370992/save_model_ep550.pth",
+                        default="./log/ppo_multi_normal/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -185,15 +186,11 @@ def main(args):
                 trace_path.line(trace_history, width=1, fill='blue')
                 # cv2_lines(np.array(trace_image), trace_history)
                 trace_image.save(f'./log/{TIMESTAMP}/track_{t}.png', quality=95)
+                print(f"path length: {get_dist(trace_history)}")
             if env.env.end:
                 sys.exit()
 
         ep_history.append(reward_history)
-        log_ep_text = {'epochs': epoch,
-                       'time_step': agent.t,
-                       'ep_reward': reward_history,
-                       'entropy_acc_mean': entropy_acc_history / args.max_timestep,
-                       'entropy_ori_mean': entropy_ori_history / args.max_timestep}
 
     env.close()
 
@@ -207,6 +204,14 @@ def cv2_lines(img: np.ndarray, trace_path: list):
         img = cv2.circle(img, pos, 1, (0, 0, 255), 0)
     tmp = Image.fromarray(img)
     tmp.show()
+
+
+def get_dist(trace_history):
+    dist_record = 0
+    for idx, pos in enumerate(trace_history[1:]):
+        dist = Distance_Cacul(trace_history[idx], pos)
+        dist_record += dist
+    return dist_record
 
 
 if __name__ == '__main__':

@@ -410,7 +410,7 @@ class RoutePlan(gym.Env, EzPickle):
     def step(self, act: np.array):
         action_sample = copy.deepcopy(act)
         # action_sample = np.clip(action_sample, -1, 1).astype('float32')
-        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0.3, a_max=1).astype('float32')
+        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0, a_max=1).astype('float32')
         # beta distribution sample remap to -1,1
         action_sample[..., 1] = np.clip(action_sample[..., 1]*2-1, a_min=-1, a_max=1).astype('float32')
 
@@ -548,7 +548,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 10
+                reward = 20
                 done = True
             elif self.ground_contact:
                 reward = -10
@@ -606,6 +606,8 @@ class RoutePlan(gym.Env, EzPickle):
 
 
 def Distance_Cacul(pointA, pointB):
+    pointA = np.array(pointA, dtype='float')
+    pointB = np.array(pointB, dtype='float')
     cx = pointA[0] - pointB[0]
     cy = pointA[1] - pointB[1]
     return math.sqrt(cx * cx + cy * cy)
