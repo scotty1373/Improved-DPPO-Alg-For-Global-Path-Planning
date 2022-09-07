@@ -341,7 +341,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=1 if self.test else 2.5,
+                density=2 if self.test else 1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -548,7 +548,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 10
+                reward = 20
                 done = True
             elif self.ground_contact:
                 reward = -10
@@ -606,6 +606,8 @@ class RoutePlan(gym.Env, EzPickle):
 
 
 def Distance_Cacul(pointA, pointB):
+    pointA = np.array(pointA, dtype='float')
+    pointB = np.array(pointB, dtype='float')
     cx = pointA[0] - pointB[0]
     cy = pointA[1] - pointB[1]
     return math.sqrt(cx * cx + cy * cy)
