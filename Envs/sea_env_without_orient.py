@@ -55,7 +55,7 @@ SHIP_POLY_BP = [
 
 SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5), (6.5, 8),
                  (6.5, 14.5), (-6.5, 14.5),
-                 (0, 14.5), (-6.5, 1.5)]
+                 (0, 14.5)]
 
 element_wise_weight = 0.8
 SHIP_POLY = [
@@ -341,7 +341,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=2 if self.test else 1,
+                density=3.5 if self.test else 1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground

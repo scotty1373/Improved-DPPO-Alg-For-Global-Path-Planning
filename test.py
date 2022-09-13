@@ -3,11 +3,12 @@ import os.path
 import sys
 
 import numpy as np
-from Envs.sea_env_without_orient import RoutePlan
+from Envs.sea_env_without_orient import RoutePlan, SHIP_POSITION
 from PPO.PPO import PPO, SkipEnvFrame
 from utils_tools.utils import state_frame_overlay, pixel_based, img_proc, first_init
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
+import pandas as pd
 from PIL import Image, ImageDraw
 from utils_tools.common import TIMESTAMP
 from Envs.sea_env_without_orient import Distance_Cacul
@@ -27,7 +28,7 @@ def parse_args():
         description='PPO config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=600,
+                        default=1,
                         type=int)
     parser.add_argument('--train',
                         help='Train or not',
@@ -39,7 +40,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1660324620/save_model_ep550.pth",
+                        default="./log/1660324620_normal_graph/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -96,10 +97,10 @@ def main(args):
     seed = args.seed
 
     if not os.path.exists(f'f./log/{TIMESTAMP}'):
-        os.makedirs(f'./log/{TIMESTAMP}/')
+        os.makedirs(f'./log/{TIMESTAMP}_test/')
 
     # 环境与agent初始化
-    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True, worker_id=None, worker_num=1, test=True)
+    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True, worker_id=None, worker_num=1)
     # env.seed(13)
     env = SkipEnvFrame(env, args.frame_skipping)
     assert isinstance(args.batch_size, int)
@@ -142,9 +143,18 @@ def main(args):
             """轨迹记录"""
             trace_history, pixel_obs, obs, done = first_init(env, args)
 
-        for t in range(args.max_timestep):
+        dist_history = {0: [],
+                        1: [],
+                        2: [],
+                        3: [],
+                        4: [],
+                        5: []}
+        env_counter = 0
+
+        for t in range(5120):
             if done:
                 trace_history, pixel_obs, obs, done = first_init(env, args)
+                env_counter += 1
             act, logprob, dist = agent.get_action((pixel_obs, obs))
             # 环境交互
             pixel_obs_t1_ori, obs_t1, reward, done, _ = env.step(act.squeeze())
@@ -178,21 +188,50 @@ def main(args):
             #                      global_step=epoch * args.max_timestep + t)
 
             trace_history.append(tuple(trace_trans(env.env.ship.position)))
+            # if env is done
             if done:
-                trace_image = env.render(mode='rgb_array')
-                trace_image = Image.fromarray(trace_image)
-                trace_path = ImageDraw.Draw(trace_image)
-                trace_path.point(trace_history, fill='Black')
-                trace_path.line(trace_history, width=1, fill='blue')
-                # cv2_lines(np.array(trace_image), trace_history)
-                trace_image.save(f'./log/{TIMESTAMP}/track_{t}.png', quality=95)
-                print(f"path length: {get_dist(trace_history)}")
+                # get current position index
+                index = SHIP_POSITION.index(env.env.iter_ship_pos.val)
+                # env terminated by complete progress
+                if env.env.game_over:
+                    dist = get_dist(trace_history)
+                    dist_history[index].append(dist)
+                    if dist <= min(dist_history[index]):
+                        trace_image = env.render(mode='rgb_array')
+                        trace_image = Image.fromarray(trace_image)
+                        trace_path = ImageDraw.Draw(trace_image)
+                        trace_path.point(trace_history, fill='Black')
+                        trace_path.line(trace_history, width=1, fill='blue')
+                        # cv2_lines(np.array(trace_image), trace_history)
+                        trace_image.save(f'./log/{TIMESTAMP}_test/track_{index}_{t}.png', quality=95)
+                        print(f"access point: {index}, path length: {get_dist(trace_history)}")
+                # env terminated by false
+                else:
+                    dist_history[index].append(1000.0)
+
             if env.env.end:
                 sys.exit()
 
-        ep_history.append(reward_history)
+        min_length = 0
+        # calculate the successful rate
+        for i in dist_history:
+            print(f'env {i}, RoutePlan successful rate: {success_plan_rate(dist_history[i], 1000.)}')
+            dist_history[i] = np.array(dist_history[i])
+            min_length = max(dist_history[i].shape[0], min_length)
 
+        for idx in dist_history:
+            dist_history[idx] = np.random.choice(dist_history[idx], min_length)
+
+        df = pd.DataFrame.from_dict(dist_history)
+        df.to_csv(f"./log/{TIMESTAMP}_test/benchmark.csv")
+        break
     env.close()
+
+
+def success_plan_rate(seq, error_bound):
+    seq = np.array(seq)
+    error_seq = np.where(seq == error_bound)[0]
+    return 1 - error_seq.shape[0]/seq.shape[0]
 
 
 def cv2_lines(img: np.ndarray, trace_path: list):
