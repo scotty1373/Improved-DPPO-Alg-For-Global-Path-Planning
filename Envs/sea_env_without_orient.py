@@ -55,7 +55,7 @@ SHIP_POLY_BP = [
 
 SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5), (6.5, 8),
                  (6.5, 14.5), (-6.5, 14.5),
-                 (0, 14.5), (-6.5, 1.5)]
+                 (0, 14.5)]
 
 element_wise_weight = 0.8
 SHIP_POLY = [
@@ -410,7 +410,7 @@ class RoutePlan(gym.Env, EzPickle):
     def step(self, act: np.array):
         action_sample = copy.deepcopy(act)
         # action_sample = np.clip(action_sample, -1, 1).astype('float32')
-        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0, a_max=1).astype('float32')
+        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0.3, a_max=1).astype('float32')
         # beta distribution sample remap to -1,1
         action_sample[..., 1] = np.clip(action_sample[..., 1]*2-1, a_min=-1, a_max=1).astype('float32')
 
