@@ -3,7 +3,7 @@ import os.path
 import sys
 
 import numpy as np
-from Envs.sea_env_without_orient import RoutePlan, SHIP_POSITION
+from Envs.sea_env_without_orient import RoutePlan, SHIP_POSITION, demo_TraditionalPathPlanning
 from PPO.PPO import PPO, SkipEnvFrame
 from utils_tools.utils import state_frame_overlay, pixel_based, img_proc, first_init
 from torch.utils.tensorboard import SummaryWriter
@@ -40,7 +40,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1662705894/save_model_ep550.pth",
+                        default="./log/1664244151/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -81,6 +81,10 @@ def parse_args():
                         help='worker number',
                         default=1,
                         type=int)
+    parser.add_argument('--traditional_only',
+                        help='only traditional running',
+                        default=True,
+                        type=bool)
     args = parser.parse_args()
     return args
 
@@ -111,6 +115,12 @@ def main(args):
     # fig, ax1 = plt.subplots(1, 1)
     # sns.heatmap(env.env.heat_map.T, ax=ax1).invert_yaxis()
     # fig.suptitle('reward shaping heatmap')
+
+    # ********************************************************************
+    # [todo] 优化输出 -> 传统路径规划算法 !!!
+    traditional_alg(env)
+
+    # ********************************************************************
 
     agent = PPO(frame_overlay=args.frame_overlay,
                 state_length=args.state_length,
@@ -227,6 +237,20 @@ def main(args):
         break
     env.close()
 
+
+def traditional_alg(env):
+    for idx in range(len(SHIP_POSITION)):
+        env.reset()
+        route_path, opts = demo_TraditionalPathPlanning(env)
+        trace_render = env.render()
+        trace_render = Image.fromarray(trace_render)
+        trace_draw = ImageDraw.Draw(trace_render)
+        trace_draw.line(route_path, width=1, fill='black')
+        index = SHIP_POSITION.index(env.env.iter_ship_pos.val)
+        trace_render.save(f'./log/{TIMESTAMP}_test/alg_{index}.png', quality=95)
+        dist = get_dist(route_path)
+        print(f'Area {index} get opts:{opts}, get dist:{dist}')
+        
 
 def success_plan_rate(seq, error_bound):
     seq = np.array(seq)

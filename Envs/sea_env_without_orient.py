@@ -663,7 +663,7 @@ def demo_route_plan(env, seed=None, render=False):
     return total_reward
 
 
-def demo_TraditionalPathPlanning(env, seed=None, render=False):
+def demo_TraditionalPathPlanning(env, seed=None):
     env.seed(seed)
     from pathfinding.core.diagonal_movement import DiagonalMovement
     from pathfinding.core.grid import Grid
@@ -681,11 +681,29 @@ def demo_TraditionalPathPlanning(env, seed=None, render=False):
     finder = DijkstraFinder(diagonal_movement=DiagonalMovement.always)
     start_time = time.time()
     path, runs = finder.find_path(start_point, end_point, grid)
+    # [todo] 传统算法路径规划所需地图大小设置为可变，在heatmap类中写一个方法用于处理这个问题
+    
+    def pathfinder_remap(vect, ratio=int(480/160)):
+        """
+        ramap path finder vect to render vect
+        :param vect: vect from pathfinder
+        :param ratio: render_size / heatmap_size
+        """
+        vect = list(copy.deepcopy(vect))
+        vect[0] = vect[0] * ratio
+        vect[1] = 480 - vect[1] * ratio
+        return tuple(vect)
+
+    path_remap = []
+    for path_iter in path:
+        path_remap.append(pathfinder_remap(path_iter))
+
     end_time = time.time() - start_time
     print(end_time)
     print('operations:', runs, 'path length:', len(path))
-    print(grid.grid_str(path=path, start=start_point, end=end_point))
-    print(path)
+    # print(grid.grid_str(path=path, start=start_point, end=end_point))
+    # print(path_remap)
+    return path_remap, runs
 
 
 if __name__ == '__main__':

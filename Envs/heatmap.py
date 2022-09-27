@@ -14,6 +14,14 @@ RATIO = REMAP_SACLE/ORG_SCALE
 
 
 def heat_map_trans(vect, *, remap_scale=REMAP_SACLE, ratio=REMAP_SACLE / ORG_SCALE):
+    """
+    Mapping to xoy position
+    The origin is at the bottom left
+    :param vect: vect from Box2D position
+    :param remap_scale: image size remapping 16 -> 160
+                                            Box2D -> heatmap
+    :param ratio: heatmap_size / Box2D_size
+   """
     remap_vect = np.array((vect[0] * ratio + remap_scale / 2, vect[1] * ratio), dtype=np.uint8)
     return remap_vect
 
@@ -34,8 +42,8 @@ def normalize(array):
 
 
 class HeatMap:
-    def __init__(self, bound_list, *, positive_reward=None):
-        self.size = (REMAP_SACLE, REMAP_SACLE)
+    def __init__(self, bound_list, *, positive_reward=None, ground_size=(REMAP_SACLE, REMAP_SACLE)):
+        self.size = ground_size
         self._init(bound_list)
         self.barr_reward = -20
         self.ground_pean = -20
@@ -113,7 +121,7 @@ class HeatMap:
         """
         heat_mat_collect = self.mat.copy()
         barr_num = len(self.bl['position'])
-        ratio = 2.5
+        ratio = 2
         for idx_barr in range(barr_num):
             heat_mat = self.mat.copy()
             # 判断输入障碍物坐标非法
