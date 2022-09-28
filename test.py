@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os.path
 import sys
+import time
 
 import numpy as np
 from Envs.sea_env_without_orient import RoutePlan, SHIP_POSITION, demo_TraditionalPathPlanning
@@ -40,7 +41,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1664244151/save_model_ep550.pth",
+                        default="./log/1664271805/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -152,6 +153,8 @@ def main(args):
         if done:
             """轨迹记录"""
             trace_history, pixel_obs, obs, done = first_init(env, args)
+            # **************************************************************
+            start_time = time.time()
 
         dist_history = {0: [],
                         1: [],
@@ -165,6 +168,9 @@ def main(args):
             if done:
                 trace_history, pixel_obs, obs, done = first_init(env, args)
                 env_counter += 1
+                # **************************************************************
+                start_time = time.time()
+
             act, logprob, dist = agent.get_action((pixel_obs, obs))
             # 环境交互
             pixel_obs_t1_ori, obs_t1, reward, done, _ = env.step(act.squeeze())
@@ -206,6 +212,9 @@ def main(args):
                 if env.env.game_over:
                     dist = get_dist(trace_history)
                     dist_history[index].append(dist)
+                    # **************************************************************
+                    end_time = time.time() - start_time
+
                     if dist <= min(dist_history[index]):
                         trace_image = env.render(mode='rgb_array')
                         trace_image = Image.fromarray(trace_image)
@@ -214,7 +223,7 @@ def main(args):
                         trace_path.line(trace_history, width=1, fill='blue')
                         # cv2_lines(np.array(trace_image), trace_history)
                         trace_image.save(f'./log/{TIMESTAMP}_test/track_{index}_{t}.png', quality=95)
-                        print(f"access point: {index}, path length: {get_dist(trace_history)}")
+                        print(f"access point: {index}, path length: {get_dist(trace_history)}, time cost: {end_time}")
                 # env terminated by false
                 else:
                     dist_history[index].append(1000.0)
@@ -241,7 +250,7 @@ def main(args):
 def traditional_alg(env):
     for idx in range(len(SHIP_POSITION)):
         env.reset()
-        route_path, opts = demo_TraditionalPathPlanning(env)
+        route_path, opts = demo_TraditionalPathPlanning(env.env)
         trace_render = env.render()
         trace_render = Image.fromarray(trace_render)
         trace_draw = ImageDraw.Draw(trace_render)

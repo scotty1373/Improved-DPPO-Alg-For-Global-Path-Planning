@@ -677,12 +677,12 @@ def demo_TraditionalPathPlanning(env, seed=None):
     start_point = grid.node(ship_position[0], ship_position[1])
     end_point = grid.node(env.heatmap_mapping_ra['position'][0], env.heatmap_mapping_ra['position'][1])
 
-    print(f'current height: {grid.height}, current width: {grid.width}')
-    finder = DijkstraFinder(diagonal_movement=DiagonalMovement.always)
+    # print(f'current height: {grid.height}, current width: {grid.width}')
+    finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
     start_time = time.time()
     path, runs = finder.find_path(start_point, end_point, grid)
     # [todo] 传统算法路径规划所需地图大小设置为可变，在heatmap类中写一个方法用于处理这个问题
-    
+
     def pathfinder_remap(vect, ratio=int(480/160)):
         """
         ramap path finder vect to render vect
@@ -700,7 +700,7 @@ def demo_TraditionalPathPlanning(env, seed=None):
 
     end_time = time.time() - start_time
     print(end_time)
-    print('operations:', runs, 'path length:', len(path))
+    # print('operations:', runs, 'path length:', len(path))
     # print(grid.grid_str(path=path, start=start_point, end=end_point))
     # print(path_remap)
     return path_remap, runs
