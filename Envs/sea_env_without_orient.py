@@ -670,6 +670,8 @@ def demo_TraditionalPathPlanning(env, seed=None):
     from pathfinding.finder.a_star import AStarFinder
     from pathfinding.finder.dijkstra import DijkstraFinder
     from pathfinding.finder.ida_star import IDAStarFinder
+    from pathfinding.finder.best_first import BestFirst
+    from pathfinding.finder.bi_a_star import BiAStarFinder
     from PIL import Image, ImageDraw
 
     grid = Grid(matrix=env.pathFinding)
@@ -678,20 +680,20 @@ def demo_TraditionalPathPlanning(env, seed=None):
     end_point = grid.node(env.heatmap_mapping_ra['position'][0], env.heatmap_mapping_ra['position'][1])
 
     # print(f'current height: {grid.height}, current width: {grid.width}')
-    finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
+    finder = IDAStarFinder(diagonal_movement=DiagonalMovement.always)
     start_time = time.time()
     path, runs = finder.find_path(start_point, end_point, grid)
     # [todo] 传统算法路径规划所需地图大小设置为可变，在heatmap类中写一个方法用于处理这个问题
 
-    def pathfinder_remap(vect, ratio=int(480/160)):
+    def pathfinder_remap(vect, ratio=480/160):
         """
         ramap path finder vect to render vect
         :param vect: vect from pathfinder
         :param ratio: render_size / heatmap_size
         """
         vect = list(copy.deepcopy(vect))
-        vect[0] = vect[0] * ratio
-        vect[1] = 480 - vect[1] * ratio
+        vect[0] = int(vect[0] * ratio)
+        vect[1] = int(480 - vect[1] * ratio)
         return tuple(vect)
 
     path_remap = []

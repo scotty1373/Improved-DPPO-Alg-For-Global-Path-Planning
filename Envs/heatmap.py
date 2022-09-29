@@ -22,7 +22,7 @@ def heat_map_trans(vect, *, remap_scale=REMAP_SACLE, ratio=REMAP_SACLE / ORG_SCA
                                             Box2D -> heatmap
     :param ratio: heatmap_size / Box2D_size
    """
-    remap_vect = np.array((vect[0] * ratio + remap_scale / 2, vect[1] * ratio), dtype=np.uint8)
+    remap_vect = np.array((vect[0] * ratio + remap_scale / 2, vect[1] * ratio), dtype=np.uint16)
     return remap_vect
 
 
@@ -125,8 +125,8 @@ class HeatMap:
         for idx_barr in range(barr_num):
             heat_mat = self.mat.copy()
             # 判断输入障碍物坐标非法
-            assert isinstance(self.bl['position'][idx_barr][0], np.uint8)
-            assert isinstance(self.bl['position'][idx_barr][1], np.uint8)
+            assert isinstance(self.bl['position'][idx_barr][0], np.uint16)
+            assert isinstance(self.bl['position'][idx_barr][1], np.uint16)
             if self.bl['position'][idx_barr][0] > self.size[0]:
                 raise ValueError
             if self.bl['position'][idx_barr][1] > self.size[1]:
@@ -158,8 +158,8 @@ class HeatMap:
         ratio = 2
         for idx_barr in range(barr_num):
             # 判断输入障碍物坐标非法
-            assert isinstance(self.bl['position'][idx_barr][0], np.uint8)
-            assert isinstance(self.bl['position'][idx_barr][1], np.uint8)
+            assert isinstance(self.bl['position'][idx_barr][0], np.uint16)
+            assert isinstance(self.bl['position'][idx_barr][1], np.uint16)
             if self.bl['position'][idx_barr][0] > self.size[0]:
                 raise ValueError
             if self.bl['position'][idx_barr][1] > self.size[1]:

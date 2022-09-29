@@ -119,7 +119,7 @@ def main(args):
 
     # ********************************************************************
     # [todo] 优化输出 -> 传统路径规划算法 !!!
-    traditional_alg(env)
+    # traditional_alg(env)
 
     # ********************************************************************
 
@@ -155,6 +155,7 @@ def main(args):
             trace_history, pixel_obs, obs, done = first_init(env, args)
             # **************************************************************
             start_time = time.time()
+            opts_counter = 0
 
         dist_history = {0: [],
                         1: [],
@@ -174,6 +175,7 @@ def main(args):
             act, logprob, dist = agent.get_action((pixel_obs, obs))
             # 环境交互
             pixel_obs_t1_ori, obs_t1, reward, done, _ = env.step(act.squeeze())
+            opts_counter += 1
             pixel_obs_t1 = img_proc(pixel_obs_t1_ori)
             # 随机漫步如果为1则不进行数据庞拼接
             if args.frame_overlay == 1:
@@ -206,15 +208,14 @@ def main(args):
             trace_history.append(tuple(trace_trans(env.env.ship.position)))
             # if env is done
             if done:
+                # **************************************************************
+                end_time = time.time() - start_time
                 # get current position index
                 index = SHIP_POSITION.index(env.env.iter_ship_pos.val)
                 # env terminated by complete progress
                 if env.env.game_over:
                     dist = get_dist(trace_history)
                     dist_history[index].append(dist)
-                    # **************************************************************
-                    end_time = time.time() - start_time
-
                     if dist <= min(dist_history[index]):
                         trace_image = env.render(mode='rgb_array')
                         trace_image = Image.fromarray(trace_image)
@@ -223,10 +224,11 @@ def main(args):
                         trace_path.line(trace_history, width=1, fill='blue')
                         # cv2_lines(np.array(trace_image), trace_history)
                         trace_image.save(f'./log/{TIMESTAMP}_test/track_{index}_{t}.png', quality=95)
-                        print(f"access point: {index}, path length: {get_dist(trace_history)}, time cost: {end_time}")
+                        print(f"access point: {index}, path length: {get_dist(trace_history)}, time cost: {end_time}, opts: {opts_counter}")
                 # env terminated by false
                 else:
                     dist_history[index].append(1000.0)
+                opts_counter = 0
 
             if env.env.end:
                 sys.exit()
@@ -259,6 +261,7 @@ def traditional_alg(env):
         trace_render.save(f'./log/{TIMESTAMP}_test/alg_{index}.png', quality=95)
         dist = get_dist(route_path)
         print(f'Area {index} get opts:{opts}, get dist:{dist}')
+        print('-'*30)
         
 
 def success_plan_rate(seq, error_bound):
