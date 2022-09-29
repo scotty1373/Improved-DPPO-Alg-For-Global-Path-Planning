@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import os.path
 import sys
+import time
 
 import numpy as np
-from Envs.sea_env_without_orient import RoutePlan, SHIP_POSITION
+from Envs.sea_env_without_orient import RoutePlan, SHIP_POSITION, demo_TraditionalPathPlanning
 from PPO.PPO import PPO, SkipEnvFrame
 from utils_tools.utils import state_frame_overlay, pixel_based, img_proc, first_init
 from torch.utils.tensorboard import SummaryWriter
@@ -40,7 +41,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1660324620_normal_graph/save_model_ep550.pth",
+                        default="./log/1662113431/save_model_ep400.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -112,6 +113,12 @@ def main(args):
     # sns.heatmap(env.env.heat_map.T, ax=ax1).invert_yaxis()
     # fig.suptitle('reward shaping heatmap')
 
+    # ********************************************************************
+    # [todo] 优化输出 -> 传统路径规划算法 !!!
+    # traditional_alg(env)
+
+    # ********************************************************************
+
     agent = PPO(frame_overlay=args.frame_overlay,
                 state_length=args.state_length,
                 action_dim=2,
@@ -138,6 +145,11 @@ def main(args):
         reward_history = 0
         entropy_acc_history = 0
         entropy_ori_history = 0
+        # **************************************************************
+        time_cost = 0
+        opts_counter = 0
+        # **************************************************************
+
         """***********这部分作为重置并没有起到训练连接的作用， 可删除if判断***********"""
         if done:
             """轨迹记录"""
@@ -155,9 +167,20 @@ def main(args):
             if done:
                 trace_history, pixel_obs, obs, done = first_init(env, args)
                 env_counter += 1
+                # **************************************************************
+                time_cost = 0
+                # **************************************************************
+
+            # **************************************************************
+            start_time = time.time()
+            # **************************************************************
             act, logprob, dist = agent.get_action((pixel_obs, obs))
+            # **************************************************************
+            time_cost += time.time() - start_time
+            # **************************************************************
             # 环境交互
             pixel_obs_t1_ori, obs_t1, reward, done, _ = env.step(act.squeeze())
+            opts_counter += 1
             pixel_obs_t1 = img_proc(pixel_obs_t1_ori)
             # 随机漫步如果为1则不进行数据庞拼接
             if args.frame_overlay == 1:
@@ -204,10 +227,12 @@ def main(args):
                         trace_path.line(trace_history, width=1, fill='blue')
                         # cv2_lines(np.array(trace_image), trace_history)
                         trace_image.save(f'./log/{TIMESTAMP}_test/track_{index}_{t}.png', quality=95)
-                        print(f"access point: {index}, path length: {get_dist(trace_history)}")
+                        print(f"access point: {index}, path length: {get_dist(trace_history)},"
+                              f"time cost: {time_cost}, opts: {opts_counter}")
                 # env terminated by false
                 else:
                     dist_history[index].append(1000.0)
+                opts_counter = 0
 
             if env.env.end:
                 sys.exit()
@@ -226,6 +251,21 @@ def main(args):
         df.to_csv(f"./log/{TIMESTAMP}_test/benchmark.csv")
         break
     env.close()
+
+
+def traditional_alg(env):
+    for idx in range(len(SHIP_POSITION)):
+        env.reset()
+        route_path, opts = demo_TraditionalPathPlanning(env.env)
+        trace_render = env.render()
+        trace_render = Image.fromarray(trace_render)
+        trace_draw = ImageDraw.Draw(trace_render)
+        trace_draw.line(route_path, width=1, fill='black')
+        index = SHIP_POSITION.index(env.env.iter_ship_pos.val)
+        trace_render.save(f'./log/{TIMESTAMP}_test/alg_{index}.png', quality=95)
+        dist = get_dist(route_path)
+        print(f'Area {index} get opts:{opts}, get dist:{dist}')
+        print('-'*30)
 
 
 def success_plan_rate(seq, error_bound):
