@@ -50,7 +50,7 @@ def parse_args():
                         type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=3,
+                        default=4,
                         type=int)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',

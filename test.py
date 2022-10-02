@@ -41,7 +41,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1664271805/save_model_ep550.pth",
+                        default="./log/1664445666/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -149,13 +149,15 @@ def main(args):
         reward_history = 0
         entropy_acc_history = 0
         entropy_ori_history = 0
+        # **************************************************************
+        time_cost = 0
+        opts_counter = 0
+        # **************************************************************
+
         """***********这部分作为重置并没有起到训练连接的作用， 可删除if判断***********"""
         if done:
             """轨迹记录"""
             trace_history, pixel_obs, obs, done = first_init(env, args)
-            # **************************************************************
-            start_time = time.time()
-            opts_counter = 0
 
         dist_history = {0: [],
                         1: [],
@@ -170,9 +172,16 @@ def main(args):
                 trace_history, pixel_obs, obs, done = first_init(env, args)
                 env_counter += 1
                 # **************************************************************
-                start_time = time.time()
+                time_cost = 0
+                # **************************************************************
 
+            # **************************************************************
+            start_time = time.time()
+            # **************************************************************
             act, logprob, dist = agent.get_action((pixel_obs, obs))
+            # **************************************************************
+            time_cost += time.time() - start_time
+            # **************************************************************
             # 环境交互
             pixel_obs_t1_ori, obs_t1, reward, done, _ = env.step(act.squeeze())
             opts_counter += 1
@@ -208,8 +217,6 @@ def main(args):
             trace_history.append(tuple(trace_trans(env.env.ship.position)))
             # if env is done
             if done:
-                # **************************************************************
-                end_time = time.time() - start_time
                 # get current position index
                 index = SHIP_POSITION.index(env.env.iter_ship_pos.val)
                 # env terminated by complete progress
@@ -224,7 +231,8 @@ def main(args):
                         trace_path.line(trace_history, width=1, fill='blue')
                         # cv2_lines(np.array(trace_image), trace_history)
                         trace_image.save(f'./log/{TIMESTAMP}_test/track_{index}_{t}.png', quality=95)
-                        print(f"access point: {index}, path length: {get_dist(trace_history)}, time cost: {end_time}, opts: {opts_counter}")
+                        print(f"access point: {index}, path length: {get_dist(trace_history)},"
+                              f"time cost: {time_cost}, opts: {opts_counter}")
                 # env terminated by false
                 else:
                     dist_history[index].append(1000.0)
@@ -262,7 +270,7 @@ def traditional_alg(env):
         dist = get_dist(route_path)
         print(f'Area {index} get opts:{opts}, get dist:{dist}')
         print('-'*30)
-        
+
 
 def success_plan_rate(seq, error_bound):
     seq = np.array(seq)
