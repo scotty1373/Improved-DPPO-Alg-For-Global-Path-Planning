@@ -308,7 +308,11 @@ class PPO:
                     'opt_critic': self.c_opt.state_dict()}, name)
 
     def load_model(self, name):
-        checkpoints = torch.load(name)
+        # cuda ckpt -> cuda
+        if self.device.type == 'cuda':
+            checkpoints = torch.load(name)
+        else:
+            checkpoints = torch.load(name, map_location=lambda storage, loc: storage)
         self.pi.load_state_dict(checkpoints['actor'], strict=False)
         self.v.load_state_dict(checkpoints['critic'])
         self.a_opt.load_state_dict(checkpoints['opt_actor'])
