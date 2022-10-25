@@ -26,7 +26,7 @@ b2ContactListener：碰撞检测监听器
 import gym
 from gym import spaces
 from gym.utils import seeding, EzPickle
-from .heatmap import HeatMap, heat_map_trans, normalize
+from heatmap import HeatMap, heat_map_trans, normalize
 from utils_tools.utils import img_proc
 
 SCALE = 30
@@ -396,6 +396,19 @@ class RoutePlan(gym.Env, EzPickle):
         # ax.plot_surface(x, y, self.heat_map.T, rstride=1, cstride=1, cmap='viridis', edgecolor='none')
         # plt.show()
 
+        # 3d 结构数据导出
+        # import pandas as pd
+        # df = np.zeros((160*160, 3))
+        # x, y = np.meshgrid(np.linspace(0, 159, 160), np.linspace(0, 159, 160))
+        # for idx_outer, i in enumerate(x):
+        #     for idx_inner, j in enumerate(i):
+        #         df[idx_outer*160+idx_inner, 0] = j
+        #         df[idx_outer*160+idx_inner, 1] = y[idx_outer, idx_inner]
+        #         df[idx_outer*160+idx_inner, 2] = self.heat_map.T[idx_outer, idx_inner]
+        #
+        # df = pd.DataFrame(df)
+        # df.to_csv('heatmap_reach.csv', index=False, header=False)
+
         end_info = b2Distance(shapeA=self.ship.fixtures[0].shape,
                               idxA=0,
                               shapeB=self.reach_area.fixtures[0].shape,
@@ -626,26 +639,31 @@ def manual_control(key):
             action[1] = 1
         elif key.event_type == 'down' and key.name == 's':
             action[1] = -1
-        action[0] = -1
     if key.event_type == 'down' and key.name == 'd':
         if key.event_type == 'down' and key.name == "w":
             action[1] = 1
         elif key.event_type == 'down' and key.name == 's':
             action[1] = -1
-        action[0] = 1
 
 
 def demo_route_plan(env, seed=None, render=False):
-    global action
+    # global action
     env.seed(seed)
+
+    # ---------------------------------------------------------------- #
+    env.ship.position = b2Vec2(1, 6.5)
+    env.ship.angle = -0.16
+    # ---------------------------------------------------------------- #
+
     total_reward = 0
     steps = 0
-    keyboard.hook(manual_control)
+    # keyboard.hook(manual_control)
     while True:
 
         if not steps % 5:
+            action = np.zeros((2, ))
             s, r, done, info = env.step(action)
-            action = [0, 0]
+
             total_reward += r
 
         if render:
@@ -709,5 +727,5 @@ def demo_TraditionalPathPlanning(env, seed=None):
 
 
 if __name__ == '__main__':
-    # demo_route_plan(RoutePlan(seed=42), render=True)
-    demo_TraditionalPathPlanning(RoutePlan(barrier_num=3, seed=42))
+    demo_route_plan(RoutePlan(seed=42, barrier_num=7), render=True)
+    # demo_TraditionalPathPlanning(RoutePlan(barrier_num=3, seed=42))
