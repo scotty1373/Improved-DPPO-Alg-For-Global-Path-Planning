@@ -7,30 +7,35 @@ import time
 
 import torch
 from torch import nn
-from torch.distributions import Normal
+from torch.distributions import Normal, Beta
+import torch.nn.functional as F
 import numpy as np
 
+
 class ActorModel(nn.Module):
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, beta=False):
         super(ActorModel, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
-        layer_mean = [nn.Linear(self.state_dim, 64),
+        self.beta_distribution = beta
+        layer_mean = [nn.Linear(self.state_dim, 400),
                       nn.ReLU(inplace=True)]
         self.layer_mean = nn.Sequential(*layer_mean)
 
-        self.mean_fc1 = nn.Linear(64, 64)
+        self.mean_fc1 = nn.Linear(400, 300)
         self.mean_fc1act = nn.ReLU(inplace=True)
-        self.mean_fc2 = nn.Linear(64, 64)
+        self.mean_fc2 = nn.Linear(300, 64)
         self.mean_fc2act = nn.ReLU(inplace=True)
         self.mean_fc3 = nn.Linear(64, self.action_dim)
         nn.init.uniform_(self.mean_fc3.weight, -3e-3, 0)
+        # activation function for Normal distribution mean value
         self.mean_fc3act = nn.Tanh()
         self.mean_fc4act_acc = nn.Sigmoid()
 
         # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
-        self.log_std = nn.Linear(self.state_dim, 64)
-        self.log_std1 = nn.Linear(64, self.action_dim)
+        self.log_std = nn.Linear(self.state_dim, 400)
+        self.log_std1 = nn.Linear(400, 300)
+        self.log_std2 = nn.Linear(300, self.action_dim)
         nn.init.uniform_(self.log_std1.weight, -3e-3, 3e-3)
 
     def forward(self, state):
@@ -40,20 +45,29 @@ class ActorModel(nn.Module):
         action_mean = self.mean_fc2(action_mean)
         action_mean = self.mean_fc2act(action_mean)
         action_mean = self.mean_fc3(action_mean)
-        action_mean[..., 0] = self.mean_fc3act(action_mean[..., 0])
-        action_mean[..., 1] = self.mean_fc4act_acc(action_mean[..., 1])
+        if not self.beta_distribution:
+            action_mean[..., 0] = self.mean_fc3act(action_mean[..., 0])
+            action_mean[..., 1] = self.mean_fc4act_acc(action_mean[..., 1])
+        else:
+            action_mean = F.softplus(action_mean)
 
         action_std = self.log_std(state)
-        action_std = nn.functional.relu(action_std, inplace=True)
+        action_std = F.relu(action_std, inplace=True)
         action_std = self.log_std1(action_std)
-        action_std = nn.functional.softplus(action_std)
+        action_std = F.relu(action_std)
+        action_std = self.log_std2(action_std)
+        action_std = F.softplus(action_std)
         # 广播机制匹配维度
         """由于是对log_std求exp，所以在计算Normal的时候不需要加1e-8"""
         # action_std = torch.exp(self.log_std)
-        dist = Normal(action_mean, action_std + 1e-8)
-        action_sample = dist.sample()
-        action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
-        action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
+        if self.beta_distribution:
+            dist = Beta(action_mean+1, action_std+1)
+            action_sample = dist.sample()
+        else:
+            dist = Normal(action_mean, action_std + 1e-8)
+            action_sample = dist.sample()
+            action_sample[..., 0] = torch.clamp(action_sample[..., 0], 0.3, 1)
+            action_sample[..., 1] = torch.clamp(action_sample[..., 1], -1, 1)
         # try:
         #     action_sample[..., 1] = torch.clamp(action_sample[..., 1], -0.7, 0.7)
         # except IndexError as e:
@@ -80,6 +94,7 @@ class CriticModel(nn.Module):
     def forward(self, state):
         value = self.fc(state)
         return value
+
 
 def layer_init(layer, *, mean=0, std=0.1):
     nn.init.normal_(layer.weight, mean=mean, std=std)

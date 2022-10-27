@@ -1,6 +1,6 @@
 import numpy
 import torch
-from models.pixel_based import ActorModel, CriticModel
+from models.net_builder import ActorModel, CriticModel
 from utils_tools.utils import RunningMeanStd
 from torch.distributions import Normal
 import gym
@@ -94,7 +94,7 @@ class PPO:
         self.root = root
 
         # model build
-        self._init(self.state_dim, self.action_dim, self.frame_overlay, self.device)
+        self._init(self.state_dim, self.action_dim, self.device)
 
         # optimizer initialize
         self.lr_actor = LEARNING_RATE_ACTOR
@@ -118,9 +118,9 @@ class PPO:
         self.t = 0
         self.ep = 0
 
-    def _init(self, state_dim, action_dim, overlay, device):
-        self.pi = ActorModel(state_dim, action_dim, overlay).to(device)
-        self.v = CriticModel(state_dim, action_dim, overlay).to(device)
+    def _init(self, state_dim, action_dim, device):
+        self.pi = ActorModel(state_dim, action_dim).to(device)
+        self.v = CriticModel(state_dim, action_dim).to(device)
         self.memory = deque(maxlen=max_mem_len)
 
     def get_action(self, obs_):
@@ -128,7 +128,7 @@ class PPO:
 
         self.pi.eval()
         with torch.no_grad():
-            action, action_logprob, dist = self.pi(pixel_obs_, obs_)
+            action, action_logprob, dist = self.pi(obs_)
         self.pi.train()
 
         return action.cpu().detach().numpy(), action_logprob.cpu().detach().numpy(), dist
@@ -142,7 +142,7 @@ class PPO:
         with torch.no_grad():
             state_frame_pixel = torch.Tensor(singal_state_frame[0]).to(self.device)
             state_frame_vect = torch.Tensor(singal_state_frame[1]).to(self.device)
-            value_target = self.v(state_frame_pixel, state_frame_vect).cpu().detach().numpy()
+            value_target = self.v(state_frame_vect).cpu().detach().numpy()
             for rd_ in reward_[::-1]:
                 value_target = rd_ + value_target * self.decay_index
                 decayed_rd.append(value_target)
@@ -163,7 +163,7 @@ class PPO:
 
     def gae_adv(self, state_pixel, state_vect, reward_step, last_val):
         with torch.no_grad():
-            critic_value_ = self.v(state_pixel, state_vect)
+            critic_value_ = self.v(state_vect)
             critic_value_ = torch.cat([critic_value_, last_val.reshape(-1, 1)], dim=0)
 
             assert reward_step.shape == critic_value_.shape
@@ -187,7 +187,7 @@ class PPO:
         q_value = d_reward_.squeeze(-1).to(self.device)
         q_value = q_value[..., None]
 
-        target_value = self.v(pixel_state, vect_state).squeeze(-1)
+        target_value = self.v(vect_state).squeeze(-1)
         target_value = target_value[..., None]
         self.c_opt.zero_grad()
         assert target_value.shape == q_value.shape
@@ -198,7 +198,7 @@ class PPO:
         self.c_opt.step()
 
     def actor_update(self, pixel_state, vect_state, action, logprob_old, advantage):
-        _, _, pi_dist = self.pi(pixel_state, vect_state)
+        _, _, pi_dist = self.pi(vect_state)
         logprob = pi_dist.log_prob(action)
 
         pi_entropy = pi_dist.entropy().mean()
@@ -260,7 +260,7 @@ class PPO:
         with torch.no_grad():
             last_frame_pixel = torch.Tensor(last_pixel)
             last_frame_vect = torch.Tensor(last_vect)
-            last_val = self.v(last_frame_pixel, last_frame_vect)
+            last_val = self.v(last_frame_vect)
 
         if done:
             last_val = torch.zeros((1, 1))
