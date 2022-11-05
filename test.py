@@ -258,6 +258,7 @@ def main(args):
 
 
 def traditional_alg(env):
+    fixed_edge = 10.8 + 30
     for idx in range(len(SHIP_POSITION)):
         env.reset()
         route_path, opts = demo_TraditionalPathPlanning(env.env)
@@ -267,7 +268,7 @@ def traditional_alg(env):
         trace_draw.line(route_path, width=1, fill='black')
         index = SHIP_POSITION.index(env.env.iter_ship_pos.val)
         trace_render.save(f'./log/{TIMESTAMP}_test/alg_{index}.png', quality=95)
-        dist = get_dist(route_path)
+        dist = get_dist(route_path) - fixed_edge
         print(f'Area {index} get opts:{opts}, get dist:{dist}')
         print('-'*30)
 

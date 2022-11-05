@@ -171,6 +171,7 @@ class HeatMap:
                     dist = get_dist(self.bl['position'][idx_barr], (row_offset, col_offset))
                     if dist <= self.bl['radius'][idx_barr] * ratio:
                         heat_mat[row_offset, col_offset] = 0
+        # heat_mat = np.flipud(heat_mat.T)
         return heat_mat
 
     @property
