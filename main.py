@@ -34,7 +34,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1664198401/save_model_ep550.pth",
+                        default="./log/1667263916_vectbeta_best/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -42,7 +42,7 @@ def parse_args():
                         type=int)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42,
+                        default=233,
                         type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
@@ -73,7 +73,7 @@ def parse_args():
                         type=str)
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=3,
+                        default=5,
                         type=int)
     args = parser.parse_args()
     return args

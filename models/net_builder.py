@@ -29,8 +29,8 @@ class ActorModel(nn.Module):
         self.mean_fc3 = nn.Linear(64, self.action_dim)
         nn.init.uniform_(self.mean_fc3.weight, -3e-3, 0)
         # activation function for Normal distribution mean value
-        self.mean_fc3act = nn.Tanh()
-        self.mean_fc4act_acc = nn.Sigmoid()
+        self.mean_fc3act_acc = nn.Sigmoid()
+        self.mean_fc4act_ori = nn.Tanh()
 
         # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
         self.log_std = nn.Linear(self.state_dim, 400)
@@ -46,8 +46,8 @@ class ActorModel(nn.Module):
         action_mean = self.mean_fc2act(action_mean)
         action_mean = self.mean_fc3(action_mean)
         if not self.beta_distribution:
-            action_mean[..., 0] = self.mean_fc3act(action_mean[..., 0])
-            action_mean[..., 1] = self.mean_fc4act_acc(action_mean[..., 1])
+            action_mean[..., 0] = self.mean_fc3act_acc(action_mean[..., 0])
+            action_mean[..., 1] = self.mean_fc4act_ori(action_mean[..., 1])
         else:
             action_mean = F.softplus(action_mean)
 

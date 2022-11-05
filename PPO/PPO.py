@@ -119,7 +119,7 @@ class PPO:
         self.ep = 0
 
     def _init(self, state_dim, action_dim, device):
-        self.pi = ActorModel(state_dim, action_dim).to(device)
+        self.pi = ActorModel(state_dim, action_dim, beta=True).to(device)
         self.v = CriticModel(state_dim, action_dim).to(device)
         self.memory = deque(maxlen=max_mem_len)
 
