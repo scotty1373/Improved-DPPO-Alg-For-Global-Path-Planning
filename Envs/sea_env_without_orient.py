@@ -53,9 +53,14 @@ SHIP_POLY_BP = [
     (+8, -6), (+8, +6), (0, +8)
     ]
 
-SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5), (6.5, 8),
-                 (6.5, 14.5), (-6.5, 14.5),
+SHIP_POSITION = [(-6.5, 14.5), (6.5, 14.5),
+                 (-6.5, 1.5), (6.5, 1.5),
                  (0, 14.5)]
+
+# SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5),
+#                  (6.5, 14.5), (-6.5, 14.5),
+#                  (1.5, 0.5), (-6.5, 11.56),
+#                  (0, 14.5)]
 
 element_wise_weight = 0.8
 SHIP_POLY = [
@@ -227,7 +232,8 @@ class RoutePlan(gym.Env, EzPickle):
         self.world.DestroyBody(self.ship)
         self.ship = None
 
-    def isValid(self, fixture_center, barrier_dict, reef_dict):
+    # 判断暗礁生成是否合法
+    def isValid_group(self, fixture_center, barrier_dict, reef_dict):
         for idx in range(self.barrier_num):
             if Distance_Cacul(barrier_dict['center_point'][idx], fixture_center) > 2.5 * barrier_dict['radius'][idx]:
                 continue
@@ -238,6 +244,19 @@ class RoutePlan(gym.Env, EzPickle):
                 continue
             else:
                 return False
+        return True
+
+    # 判断障碍物生成是否合法
+    def isValid(self, cur_pos, barrier_dict, radius):
+        for idx in range(len(barrier_dict['center_point'])):
+            if Distance_Cacul(barrier_dict['center_point'][idx], cur_pos) > 2.5 * (barrier_dict['radius'][idx] + radius):
+                continue
+            else:
+                return False
+        if Distance_Cacul(self.reach_area.position, cur_pos) > 2 * radius:
+            pass
+        else:
+            return False
         return True
 
     def reset(self):
@@ -266,11 +285,25 @@ class RoutePlan(gym.Env, EzPickle):
              (VIEWPORT_W/SCALE/2, VIEWPORT_H/SCALE/2),
              (-VIEWPORT_W/SCALE/2, VIEWPORT_H/SCALE/2)])
 
+        """抵达点生成"""
+        # 设置抵达点位置
+        # reach_center_x = W/2 * 0.6
+        # reach_center_y = H*0.75
+        reach_center_x = 0
+        reach_center_y = H*0.5
+        # circle_shape = b2CircleShape(radius=0.85)
+        circle_shape = b2PolygonShape(vertices=[(x/4, y/4) for x, y in REACH_POLY])
+        self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
+                                                      fixtures=b2FixtureDef(
+                                                          shape=circle_shape
+                                                      ))
+        self.reach_area.color = PANEL[4]
+
         """设置障碍物位置转移mesh"""
         # 存储生成barrier参数
         barrier_dict = {'center_point': [],
                         'radius': []}
-        CHUNKS = 3
+        CHUNKS = 5
         start_center = (-(W/2 - W*(1 - self.barrier_bound_x) / 2 - W * self.barrier_bound_x / CHUNKS * 1/2),
                         (H - (1 - self.barrier_bound_y) * 1/2 * H - (H * self.barrier_bound_y) / CHUNKS * 1/2))
         shift_x, shift_y = np.linspace(start_center[0], -start_center[0], CHUNKS),\
@@ -289,6 +322,16 @@ class RoutePlan(gym.Env, EzPickle):
             radius = self.barrier_radius * np.random.uniform(0.2 + 1.3**(-self.barrier_num), 0.5 + 1.08**(-self.barrier_num))
             barrier_pos = (shift_x[idxbr // CHUNKS, idxbr % CHUNKS] + random_noise_x,
                            shift_y[idxbr // CHUNKS, idxbr % CHUNKS] + random_noise_y)
+
+            while not self.isValid(barrier_pos, barrier_dict, radius):
+                # 控制障碍物生成位置在圈定范围之内60％部分
+                random_noise_x = np.random.uniform(-W * self.barrier_bound_x * 0.05, W * self.barrier_bound_x * 0.05)
+                random_noise_y = np.random.uniform(-H * self.barrier_bound_y * 0.05, H * self.barrier_bound_y * 0.05)
+                # 通过index选择障碍物位置
+                radius = self.barrier_radius * np.random.uniform(0.2 + 1.3 ** (-self.barrier_num),
+                                                                 0.5 + 1.08 ** (-self.barrier_num))
+                barrier_pos = (shift_x[idxbr // CHUNKS, idxbr % CHUNKS] + random_noise_x,
+                               shift_y[idxbr // CHUNKS, idxbr % CHUNKS] + random_noise_y)
             self.barrier.append(
                 self.world.CreateStaticBody(shapes=b2CircleShape(
                     pos=barrier_pos,
@@ -317,8 +360,8 @@ class RoutePlan(gym.Env, EzPickle):
         else:
             # 判断worker是否使用循环
             if not self.single_worker:
-                initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], \
-                                                         SHIP_POSITION[self.worker_id][1]
+                initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0] + random.uniform(0, 0.3), \
+                                                         SHIP_POSITION[self.worker_id][1] + random.uniform(0, 0.3)
             else:
                 random_position = self.iter_ship_pos.val
                 initial_position_x, initial_position_y = random_position[0], random_position[1]
@@ -353,17 +396,6 @@ class RoutePlan(gym.Env, EzPickle):
         self.ship.ApplyForceToCenter((self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM),
                                       self.np_random.uniform(-INITIAL_RANDOM, INITIAL_RANDOM)), wake=True)
 
-        """抵达点生成"""
-        # 设置抵达点位置
-        reach_center_x = W/2 * 0.6
-        reach_center_y = H*0.75
-        # circle_shape = b2CircleShape(radius=0.85)
-        circle_shape = b2PolygonShape(vertices=[(x/2, y/2) for x, y in REACH_POLY])
-        self.reach_area = self.world.CreateStaticBody(position=(reach_center_x, reach_center_y),
-                                                      fixtures=b2FixtureDef(
-                                                          shape=circle_shape
-                                                      ))
-        self.reach_area.color = PANEL[4]
         self.draw_list = [self.ship] + self.barrier + [self.reach_area] + [self.ground]
 
         # reward Heatmap构建
@@ -564,10 +596,10 @@ class RoutePlan(gym.Env, EzPickle):
                 reward = 20
                 done = True
             elif self.ground_contact:
-                reward = -10
+                reward = -20
                 done = True
             else:
-                reward = -5
+                reward = -10
                 done = True
 
         '''失败终止状态定义在训练迭代主函数中，由主函数给出失败终止状态惩罚reward'''
@@ -651,8 +683,8 @@ def demo_route_plan(env, seed=None, render=False):
     env.seed(seed)
 
     # ---------------------------------------------------------------- #
-    env.ship.position = b2Vec2(1, 6.5)
-    env.ship.angle = -0.16
+    # env.ship.position = b2Vec2(1, 6.5)
+    # env.ship.angle = -0.16
     # ---------------------------------------------------------------- #
 
     total_reward = 0
@@ -704,7 +736,7 @@ def demo_TraditionalPathPlanning(env, seed=None):
     end_point = grid.node(reach_area_position[0], reach_area_position[1])
 
     # print(f'current height: {grid.height}, current width: {grid.width}')
-    finder = AStarFinder(diagonal_movement=DiagonalMovement.if_at_most_one_obstacle)
+    finder = AStarFinder(diagonal_movement=DiagonalMovement.always)
     start_time = time.time()
     path, runs = finder.find_path(start_point, end_point, grid)
     # [todo] 传统算法路径规划所需地图大小设置为可变，在heatmap类中写一个方法用于处理这个问题
@@ -733,5 +765,5 @@ def demo_TraditionalPathPlanning(env, seed=None):
 
 
 if __name__ == '__main__':
-    demo_route_plan(RoutePlan(seed=42, barrier_num=7), render=True)
+    demo_route_plan(RoutePlan(seed=None, barrier_num=8), render=True)
     # demo_TraditionalPathPlanning(RoutePlan(barrier_num=3, seed=42))

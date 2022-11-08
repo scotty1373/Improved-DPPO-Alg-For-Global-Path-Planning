@@ -41,7 +41,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1664445666/save_model_ep550.pth",
+                        default="./log/1667838467/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -100,6 +100,8 @@ def main(args):
     seed_torch()
     device = torch.device('cuda')
     seed = args.seed
+    # save when done == 1 no matter path is best or not
+    save_forever = True
 
     if not os.path.exists(f'f./log/{TIMESTAMP}'):
         os.makedirs(f'./log/{TIMESTAMP}_test/')
@@ -158,6 +160,7 @@ def main(args):
         if done:
             """轨迹记录"""
             trace_history, pixel_obs, obs, done = first_init(env, args)
+            trace_image = env.render(mode='rgb_array')
 
         dist_history = {0: [],
                         1: [],
@@ -170,6 +173,7 @@ def main(args):
         for t in range(5120):
             if done:
                 trace_history, pixel_obs, obs, done = first_init(env, args)
+                trace_image = env.render(mode='rgb_array')
                 env_counter += 1
                 # **************************************************************
                 time_cost = 0
@@ -223,8 +227,10 @@ def main(args):
                 if env.env.game_over:
                     dist = get_dist(trace_history)
                     dist_history[index].append(dist)
-                    if dist <= min(dist_history[index]):
-                        trace_image = env.render(mode='rgb_array')
+                    if save_forever or  dist <= min(dist_history[index]):
+                        # added reach point center position
+                        trace_history.append(tuple(trace_trans(env.env.reach_area.position)))
+
                         trace_image = Image.fromarray(trace_image)
                         trace_path = ImageDraw.Draw(trace_image)
                         trace_path.point(trace_history, fill='Black')
@@ -258,7 +264,7 @@ def main(args):
 
 
 def traditional_alg(env):
-    fixed_edge = 10.8 + 30
+    fixed_edge = 15.27 + 30
     for idx in range(len(SHIP_POSITION)):
         env.reset()
         route_path, opts = demo_TraditionalPathPlanning(env.env)
