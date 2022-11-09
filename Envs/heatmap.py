@@ -155,7 +155,7 @@ class HeatMap:
         """
         heat_mat = np.ones_like(self.mat)
         barr_num = len(self.bl['position'])
-        ratio = 2
+        ratio = 1
         for idx_barr in range(barr_num):
             # 判断输入障碍物坐标非法
             assert isinstance(self.bl['position'][idx_barr][0], np.uint16)

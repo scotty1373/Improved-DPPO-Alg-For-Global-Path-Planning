@@ -2,6 +2,7 @@
 import csv
 import json
 import time
+import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -14,7 +15,7 @@ from sys import platform
 TIMESTAMP = str(round(time.time()))
 KEYs_Train = ['epochs', 'time_step', 'ep_reward', 'entropy_mean']
 
-FILE_NAME = '../log/ppo_multi_normal'
+FILE_NAME = '../vect_state/normal_vect_state/20221102'
 # FILE_NAME = '../log/ppo_origin'
 
 class log2json:
@@ -89,25 +90,17 @@ class visualize_result:
         for idx, df_log in enumerate(logDataFrame):
             df_collect.iloc[idx*col:(idx+1)*col, 0] = df_log['epochs']
             df_collect['worker'][idx * col:(idx + 1) * col] = f'worker_{idx}'
-            smooth_data = self._tensorboard_smoothing(df_log['ep_reward'], 0.9)
+            smooth_data = self._tensorboard_smoothing(df_log['ep_reward'], 0.0)
             df_collect.iloc[idx * col:(idx + 1) * col, 2] = smooth_data
         df_collect.head()
-        # df_insert = pd.melt(df_insert, 'epochs', var_name='workers', value_name='ep_reward')
 
-        sns.set_style('darkgrid')
-        sns.set_context('paper')
-        figure = sns.lineplot(data=df_collect, x='epochs', y='ep_reward', hue='worker')
-        figure.set_xlim(0, logDataFrame[0].shape[0])
-        figure.set_ylim(-1500, 400)
-        figure.set_yticks([-1500, -1000, -500, 0, 400])
-        plt.xlabel('epoch', fontdict={'weight': 'bold',
-                                      'size': 12})
-        plt.ylabel('ep_reward', fontdict={'weight': 'bold', 'size': 12})
-        # plt.subplots_adjust(left=0.2, bottom=0.2)
-        # plt.title(y_trick, fontdict={'weight': 'bold',
-        #                              'size': 20})
-        # plt.legend(labels=['ppo ep reward'], loc='lower right', fontsize=10)
-        plt.show()
+        # df_insert = pd.melt(df_insert, 'epochs', var_name='workers', value_name='ep_reward')
+        # 将数据从长数据形式重塑
+        df_collect = df_collect.pivot(index='epochs', columns=['worker'], values='ep_reward')
+        df_collect.to_csv(os.path.join(FILE_NAME, 'smoothed_reward.csv'))
+
+        # 不同worker累计回报可视化
+        # self.sns_plot(df_collect, logDataFrame[0].shape[0])
 
     def uni_loss(self):
         pass
@@ -128,6 +121,23 @@ class visualize_result:
             norm_factor += 1
 
         return res
+
+    @staticmethod
+    def sns_plot(df_collect, x_lim):
+        sns.set_style('darkgrid')
+        sns.set_context('paper')
+        figure = sns.lineplot(data=df_collect, x='epochs', y='ep_reward', hue='worker')
+        figure.set_xlim(0, x_lim)
+        figure.set_ylim(-1500, 400)
+        figure.set_yticks([-1500, -1000, -500, 0, 400])
+        plt.xlabel('epoch', fontdict={'weight': 'bold',
+                                      'size': 12})
+        plt.ylabel('ep_reward', fontdict={'weight': 'bold', 'size': 12})
+        # plt.subplots_adjust(left=0.2, bottom=0.2)
+        # plt.title(y_trick, fontdict={'weight': 'bold',
+        #                              'size': 20})
+        # plt.legend(labels=['ppo ep reward'], loc='lower right', fontsize=10)
+        plt.show()
 
     @staticmethod
     def dataframe_collect(file_name):
@@ -173,9 +183,9 @@ def json_line_extract(json_format_str):
 if __name__ == '__main__':
     vg = visualize_result()
     df = []
-    file_list = os.listdir(FILE_NAME)
+    file_list = glob.glob(FILE_NAME+'/*.csv')
     for fp in file_list:
-        path_csv_log = FILE_NAME + '/' + fp
+        path_csv_log = fp.replace("\\", "/")
         df.append(vg.dataframe_collect(path_csv_log))
 
     vg.reward(df)
