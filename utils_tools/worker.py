@@ -142,10 +142,14 @@ class worker(mp.Process):
 
                 trace_history.append(tuple(trace_trans(env.env.ship.position)))
 
-            # 从global取回参数
-            self.pull_from_global(agent)
             """管道发送buffer，并清空buffer"""
             self.pipe_line.send(buffer)
+
+            while not self.event.is_set():
+                self.event.wait()
+
+            # 从global取回参数
+            self.pull_from_global(agent)
 
             ep_history.append(reward_history)
             log_ep_text = {'epochs': epoch,

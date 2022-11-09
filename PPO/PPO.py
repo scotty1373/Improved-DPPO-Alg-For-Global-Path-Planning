@@ -102,12 +102,12 @@ class PPO:
         self.decay_index = DECAY
         self.epsilon = EPILSON
         self.c_loss = torch.nn.MSELoss()
-        self.lamda = 0.95
+        self.lamda = 0.97
         self.kl_target = 0.01
         self.c_opt = torch.optim.Adam(params=self.v.parameters(), lr=self.lr_critic)
         self.a_opt = torch.optim.Adam(params=self.pi.parameters(), lr=self.lr_actor)
-        self.c_sch = torch.optim.lr_scheduler.MultiStepLR(self.c_opt, milestones=[120, 320], gamma=0.1)
-        self.a_sch = torch.optim.lr_scheduler.MultiStepLR(self.a_opt, milestones=[130, 330], gamma=0.1)
+        self.c_sch = torch.optim.lr_scheduler.MultiStepLR(self.c_opt, milestones=[300, 400], gamma=0.1)
+        self.a_sch = torch.optim.lr_scheduler.MultiStepLR(self.a_opt, milestones=[310, 410], gamma=0.1)
 
         # training configuration
         self.state_rms = RunningMeanStd(shape=(1, self.frame_overlay, 80, 80))
@@ -194,7 +194,7 @@ class PPO:
         critic_loss = self.c_loss(target_value, q_value)
         self.history_critic = critic_loss.detach().item()
         critic_loss.backward()
-        torch.nn.utils.clip_grad_value_(self.v.parameters(), clip_value=100)
+        torch.nn.utils.clip_grad_value_(self.v.parameters(), clip_value=20)
         self.c_opt.step()
 
     def actor_update(self, pixel_state, vect_state, action, logprob_old, advantage):
@@ -217,15 +217,15 @@ class PPO:
         beta = 1
         kl_approx_div = torch.nn.functional.kl_div(logprob, logprob_old, reduction='mean')
         # kl_approx_div = ((ratio - 1) - (logprob - logprob_old)).mean()
-        if kl_approx_div >= 1.5 * self.kl_target:
+        if abs(kl_approx_div) >= 1.5 * self.kl_target:
             beta = beta * 2
-        elif kl_approx_div < self.kl_target / 1.5:
+        elif abs(kl_approx_div) < self.kl_target / 1.5:
             beta = beta / 2
 
         actor_loss = torch.min(torch.cat((surrogate1_acc, surrogate2_acc), dim=1), dim=1)[0]
 
         self.a_opt.zero_grad()
-        actor_loss = -torch.mean(actor_loss) + kl_approx_div * beta
+        actor_loss = -torch.mean(actor_loss)
         try:
             actor_loss.backward()
         except RuntimeError as e:

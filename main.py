@@ -34,7 +34,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1664198401/save_model_ep550.pth",
+                        default="./log/1667925082/save_model_ep50.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -42,7 +42,7 @@ def parse_args():
                         type=int)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42,
+                        default=233333,
                         type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
@@ -73,7 +73,7 @@ def parse_args():
                         type=str)
     parser.add_argument('--worker_num',
                         help='worker number',
-                        default=5,
+                        default=4,
                         type=int)
     args = parser.parse_args()
     return args
@@ -81,7 +81,7 @@ def parse_args():
 
 def main(args):
     args = args
-    seed_torch()
+    seed_torch(42)
     device = torch.device('cuda')
     torch.multiprocessing.set_start_method('spawn')
 
@@ -117,10 +117,13 @@ def main(args):
 
     # Event Reset
     event.set()
-    event.clear()
 
     epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')
     for epoch in epochs:
+
+        # subProcess enable
+        event.clear()
+
         steps = tqdm(range(0, args.worker_num), leave=False, position=1, colour='red')
         # 从子线程中获取数据
         for step_i in steps:
@@ -132,6 +135,8 @@ def main(args):
                                           subprocess_buffer.d_reward,
                                           subprocess_buffer.adv)
             del subprocess_buffer
+
+        event.set()
 
         # 参数更新
         global_ppo.update(training_buffer, args)

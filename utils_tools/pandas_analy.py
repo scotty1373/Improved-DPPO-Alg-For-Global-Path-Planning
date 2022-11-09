@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 head = ["step", "Area_1", "Area_2", "Area_3", "Area_4", "Area_5", "Area_6"]
-file_path = '../log/1664271308_test/benchmark.csv'
+file_path = '../result/1667459114_test/benchmark.csv'
 
 
 def get_success(dataframe):
