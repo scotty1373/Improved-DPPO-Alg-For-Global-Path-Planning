@@ -31,23 +31,23 @@ class ActorModel(nn.Module):
         self.actv4 = nn.ReLU(inplace=True)
 
         self.fc_state = nn.Sequential(
-            nn.Linear(self.state_dim, 100),
+            nn.Linear(self.state_dim, 400),
             nn.ReLU(inplace=True)
         )
 
         self.mean_fc1 = nn.Sequential(
-            nn.Linear(1024 + 100, 400),
+            nn.Linear(1024 + 400, 300),
             nn.ReLU(inplace=True))
         self.mean_fc2 = nn.Sequential(
-            uniform_init(nn.Linear(400 + 100, 64), a=-3e-4, b=3e-4),
+            uniform_init(nn.Linear(300 + 400, 300), a=-3e-4, b=3e-4),
             nn.ReLU(inplace=True))
-        self.mean_fc3 = uniform_init(nn.Linear(64, self.action_dim), a=-3e-4, b=3e-4)
+        self.mean_fc3 = uniform_init(nn.Linear(300, self.action_dim), a=-3e-4, b=3e-4)
         self.mean_fc3act_acc = nn.Sigmoid()
         self.mean_fc3act_ori = nn.Tanh()
 
         # self.log_std = nn.Parameter(-1 * torch.ones(action_dim))
-        self.log_std = nn.Linear(1024 + 100, 400)
-        self.log_std1 = nn.Linear(400 + 100, 200)
+        self.log_std = nn.Linear(1024 + 400, 300)
+        self.log_std1 = nn.Linear(300 + 400, 200)
         self.log_std2 = nn.Linear(200, self.action_dim)
         nn.init.normal_(self.log_std1.weight, -3e-4, 3e-4)
         # nn.init.constant_(self.log_std1.bias, 0.0)

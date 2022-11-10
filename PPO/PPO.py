@@ -215,7 +215,7 @@ class PPO:
 
         # [todo] 需要增加KL散度计算
         beta = 1
-        kl_approx_div = torch.nn.functional.kl_div(logprob, logprob_old, reduction='mean')
+        kl_approx_div = torch.nn.functional.kl_div(logprob, logprob_old, reduction='mean', log_target=True)
         # kl_approx_div = ((ratio - 1) - (logprob - logprob_old)).mean()
         if abs(kl_approx_div) >= 1.5 * self.kl_target:
             beta = beta * 2

@@ -324,8 +324,8 @@ class RoutePlan(gym.Env, EzPickle):
 
             while not self.isValid(barrier_pos, barrier_dict, radius):
                 # 控制障碍物生成位置在圈定范围之内60％部分
-                random_noise_x = np.random.uniform(-W * self.barrier_bound_x * 0.05, W * self.barrier_bound_x * 0.05)
-                random_noise_y = np.random.uniform(-H * self.barrier_bound_y * 0.05, H * self.barrier_bound_y * 0.05)
+                random_noise_x = np.random.uniform(-W * self.barrier_bound_x * 0.1, W * self.barrier_bound_x * 0.1)
+                random_noise_y = np.random.uniform(-H * self.barrier_bound_y * 0.1, H * self.barrier_bound_y * 0.1)
                 # 通过index选择障碍物位置
                 radius = self.barrier_radius * np.random.uniform(0.2 + 1.3 ** (-self.barrier_num),
                                                                  0.3 + 1.08 ** (-self.barrier_num))
@@ -359,8 +359,10 @@ class RoutePlan(gym.Env, EzPickle):
         else:
             # 判断worker是否使用循环
             if not self.single_worker:
-                initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0] + random.uniform(0, 0.3), \
-                                                         SHIP_POSITION[self.worker_id][1] + random.uniform(0, 3)
+                # initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0] + random.uniform(0, 0.3), \
+                #                                          SHIP_POSITION[self.worker_id][1] + random.uniform(0, 3)
+                initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], \
+                                                         SHIP_POSITION[self.worker_id][1]
             else:
                 random_position = self.iter_ship_pos.val
                 initial_position_x, initial_position_y = random_position[0], random_position[1]
@@ -383,7 +385,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=3.5 if self.test else 2.5,
+                density=3.5 if self.test else 1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -454,7 +456,7 @@ class RoutePlan(gym.Env, EzPickle):
     def step(self, act: np.array):
         action_sample = copy.deepcopy(act)
         # action_sample = np.clip(action_sample, -1, 1).astype('float32')
-        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0.0, a_max=1).astype('float32')
+        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0.3, a_max=1).astype('float32')
         # beta distribution sample remap to -1,1
         action_sample[..., 1] = np.clip(action_sample[..., 1]*2-1, a_min=-1, a_max=1).astype('float32')
 
@@ -486,41 +488,41 @@ class RoutePlan(gym.Env, EzPickle):
         # elif angle_unrotate > b2_pi:
         #     angle_unrotate -= (b2_pi * 2)
         #
-        # vel_temp = self.ship.linearVelocity
+        vel_ship = self.ship.linearVelocity
         # # 计算船体行进方向的单位向量相对world向量
         # ship_unit_vect = self.ship.GetWorldVector(localVector=(1.0, 0.0))
         # # 计算速度方向到单位向量的投影，也就是投影在船轴心x上的速度
         # vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
         #
-        # # 11 维传感器数据字典
-        # sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
-        #                   'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
-        #                   'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
-        # """传感器扫描"""
-        # length = self.ship_radius * 10      # Set up the raycast line
-        # point1 = self.ship.position
-        # for vect in range(RAY_CAST_LASER_NUM):
-        #     ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
-        #     d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
-        #     point2 = point1 + d
-        #
-        #     # 初始化Raycast callback函数
-        #     callback = RayCastClosestCallback()
-        #
-        #     self.world.RayCast(callback, point1, point2)
-        #
-        #     if callback.hit:
-        #         sensor_raycast['points'][vect] = callback.point
-        #         sensor_raycast['normal'][vect] = callback.normal
-        #         if callback.fixture == self.reach_area.fixtures[0]:
-        #             sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
-        #         elif callback.fixture in self.ground.fixtures:
-        #             sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
-        #         else:
-        #             sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
-        #     else:
-        #         sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
-        # sensor_raycast['distance'][..., 1] /= self.ship_radius*10
+        # 11 维传感器数据字典
+        sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
+                          'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
+                          'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
+        """传感器扫描"""
+        length = self.ship_radius * 10      # Set up the raycast line
+        point1 = self.ship.position
+        for vect in range(RAY_CAST_LASER_NUM):
+            ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
+            d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
+            point2 = point1 + d
+
+            # 初始化Raycast callback函数
+            callback = RayCastClosestCallback()
+
+            self.world.RayCast(callback, point1, point2)
+
+            if callback.hit:
+                sensor_raycast['points'][vect] = callback.point
+                sensor_raycast['normal'][vect] = callback.normal
+                if callback.fixture == self.reach_area.fixtures[0]:
+                    sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
+                elif callback.fixture in self.ground.fixtures:
+                    sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
+                else:
+                    sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
+            else:
+                sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
+        sensor_raycast['distance'][..., 1] /= self.ship_radius*10
 
         pos = self.ship.position
         try:
@@ -543,23 +545,24 @@ class RoutePlan(gym.Env, EzPickle):
         vel_scalar = Distance_Cacul(vel, b2Vec2(0, 0))
 
         # 状态值归一化
-        # state = [
-        #     (pos.x - self.reach_area.position.x)/8,
-        #     (pos.y - self.reach_area.position.y)/16,
-        #     vel_scalar,
-        #     end_ori/b2_pi,
-        #     end_info.distance/self.dist_norm,
-        #     [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
-        # ]
-        # assert len(state) == 6
-
         state = [
-            (pos.x - self.reach_area.position.x),
-            (pos.y - self.reach_area.position.y),
-            end_info.distance,
-            end_ori/b2_pi
+            (pos.x - self.reach_area.position.x)/8,
+            (pos.y - self.reach_area.position.y)/16,
+            vel_ship[0],
+            vel_ship[1],
+            end_ori/b2_pi,
+            end_info.distance/self.dist_init,
+            [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
         ]
-        assert len(state) == 4
+        assert len(state) == 7
+
+        # state = [
+        #     (pos.x - self.reach_area.position.x),
+        #     (pos.y - self.reach_area.position.y),
+        #     end_info.distance,
+        #     end_ori/b2_pi
+        # ]
+        # assert len(state) == 4
 
         # state = [
         #     end_info.distance,
@@ -577,11 +580,11 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         if self.dist_record is not None and self.dist_record < end_info.distance:
-            # reward_dist = -end_info.distance / self.dist_init
-            reward_dist = -1
+            reward_dist = -end_info.distance / self.dist_init
+            # reward_dist = -1
         else:
-            # reward_dist = 1 - end_info.distance / self.dist_init
-            reward_dist = 1
+            reward_dist = 1 - end_info.distance / self.dist_init
+            # reward_dist = 1
             self.dist_record = end_info.distance
 
         reward_shaping = self.heat_map[pos_mapping[0], pos_mapping[1]]

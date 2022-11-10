@@ -50,7 +50,7 @@ def parse_args():
                         type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=4,
+                        default=1,
                         type=int)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
@@ -61,7 +61,7 @@ def parse_args():
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=4,
+                        default=6 + 24*2,
                         type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
@@ -81,7 +81,7 @@ def parse_args():
 
 def main(args):
     args = args
-    seed_torch(42)
+    seed_torch()
     device = torch.device('cuda')
     torch.multiprocessing.set_start_method('spawn')
 
