@@ -34,7 +34,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1667925082/save_model_ep50.pth",
+                        default="./log/1668080655/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -136,10 +136,11 @@ def main(args):
                                           subprocess_buffer.adv)
             del subprocess_buffer
 
-        event.set()
-
         # 参数更新
         global_ppo.update(training_buffer, args)
+
+        event.set()
+
         # lr_Scheduler
         global_ppo.a_sch.step()
         global_ppo.c_sch.step()

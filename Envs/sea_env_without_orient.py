@@ -30,7 +30,7 @@ from .heatmap import HeatMap, heat_map_trans, normalize
 from utils_tools.utils import img_proc
 
 SCALE = 30
-FPS = 60
+FPS = 120
 
 VIEWPORT_W = 480
 VIEWPORT_H = 480
@@ -52,9 +52,11 @@ SHIP_POLY_BP = [
     (-5, +8), (-5, -8), (0, -8),
     (+8, -6), (+8, +6), (0, +8)
     ]
-
-SHIP_POSITION = [(-6.5, 12), (6.5, 12),
-                 (-6.5, 4), (6.5, 4)]
+#
+# SHIP_POSITION = [(-6.5, 12),
+#                  (-6.5, 4)]
+SHIP_POSITION = [(-6.5, 12), (-6.5, 4),
+                 (6.5, 4), (6.5, 12)]
 
 # SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5),
 #                  (6.5, 14.5), (-6.5, 14.5),
@@ -359,10 +361,10 @@ class RoutePlan(gym.Env, EzPickle):
         else:
             # 判断worker是否使用循环
             if not self.single_worker:
-                # initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0] + random.uniform(0, 0.3), \
-                #                                          SHIP_POSITION[self.worker_id][1] + random.uniform(0, 3)
-                initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], \
-                                                         SHIP_POSITION[self.worker_id][1]
+                initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0] + random.uniform(0, 0.3), \
+                                                         SHIP_POSITION[self.worker_id][1] + random.uniform(0, 3)
+                # initial_position_x, initial_position_y = SHIP_POSITION[self.worker_id][0], \
+                #                                          SHIP_POSITION[self.worker_id][1]
             else:
                 random_position = self.iter_ship_pos.val
                 initial_position_x, initial_position_y = random_position[0], random_position[1]
@@ -381,7 +383,7 @@ class RoutePlan(gym.Env, EzPickle):
             position=(initial_position_x, initial_position_y),
             angle=0.0,
             angularDamping=20,
-            linearDamping=10,
+            linearDamping=0.8,
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
@@ -456,7 +458,7 @@ class RoutePlan(gym.Env, EzPickle):
     def step(self, act: np.array):
         action_sample = copy.deepcopy(act)
         # action_sample = np.clip(action_sample, -1, 1).astype('float32')
-        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0.3, a_max=1).astype('float32')
+        action_sample[..., 0] = np.clip(action_sample[..., 0], a_min=0, a_max=1).astype('float32')
         # beta distribution sample remap to -1,1
         action_sample[..., 1] = np.clip(action_sample[..., 1]*2-1, a_min=-1, a_max=1).astype('float32')
 
@@ -595,7 +597,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 定义成功终止状态
         if self.ship.contact:
             if self.game_over:
-                reward = 20
+                reward = 50
                 done = True
             elif self.ground_contact:
                 reward = -10

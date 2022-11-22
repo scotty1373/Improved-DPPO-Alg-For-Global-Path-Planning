@@ -41,7 +41,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default="./log/1667838467/save_model_ep550.pth",
+                        default="./log/1668154937/save_model_ep550.pth",
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
@@ -49,7 +49,7 @@ def parse_args():
                         type=int)
     parser.add_argument('--seed',
                         help='environment initialization seed',
-                        default=42,
+                        default=233333,
                         type=int)
     parser.add_argument('--batch_size',
                         help='training batch size',
@@ -57,7 +57,7 @@ def parse_args():
                         type=int)
     parser.add_argument('--frame_skipping',
                         help='random walk frame skipping',
-                        default=3,
+                        default=1,
                         type=int)
     parser.add_argument('--frame_overlay',
                         help='data frame overlay',
@@ -68,7 +68,7 @@ def parse_args():
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=4,
+                        default=6+24*2,
                         type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
