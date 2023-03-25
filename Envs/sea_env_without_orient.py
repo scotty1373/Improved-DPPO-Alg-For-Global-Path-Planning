@@ -55,7 +55,7 @@ SHIP_POLY_BP = [
 
 SHIP_POSITION = [(-6.5, 8), (-6.5, 1.5), (6.5, 8),
                  (6.5, 14.5), (-6.5, 14.5),
-                 (0, 14.5), (-6.5, 1.5)]
+                 (0, 14.5)]
 
 element_wise_weight = 0.8
 SHIP_POLY = [
@@ -138,7 +138,7 @@ class RoutePlan(gym.Env, EzPickle):
         'video.frames_per_second': FPS
     }
 
-    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, positive_heatmap=None, barrier_radius=1, epoch=0):
+    def __init__(self, barrier_num=3, seed=None, ship_pos_fixed=None, positive_heatmap=None, barrier_radius=1, test=False):
         EzPickle.__init__(self)
         self.seed()
         self.viewer = None
@@ -149,11 +149,13 @@ class RoutePlan(gym.Env, EzPickle):
         else:
             self.positive_heat_map = None
         self.hard_update = False
+        self.test = test
 
         # 环境物理结构变量
         self.world = Box2D.b2World(gravity=(0, 0))
         self.barrier = []
         self.reef = []
+        self.end = None
         self.ship = None
         self.reach_area = None
         self.ground = None
@@ -161,10 +163,9 @@ class RoutePlan(gym.Env, EzPickle):
         # 障碍物数量
         self.barrier_num = barrier_num
         self.barrier_radius = barrier_radius
-        self.epoch = epoch
         # 障碍物生成边界
-        self.barrier_bound_x = 0.8
-        self.barrier_bound_y = 0.9
+        self.barrier_bound_x = 0.6
+        self.barrier_bound_y = 0.8
         self.dead_area_bound = 0.03
         self.ship_radius = 0.36*element_wise_weight
 
@@ -266,7 +267,7 @@ class RoutePlan(gym.Env, EzPickle):
         # 存储生成barrier参数
         barrier_dict = {'center_point': [],
                         'radius': []}
-        CHUNKS = 5
+        CHUNKS = 3
         start_center = (-(W/2 - W*(1 - self.barrier_bound_x) / 2 - W * self.barrier_bound_x / CHUNKS * 1/2),
                         (H - (1 - self.barrier_bound_y) * 1/2 * H - (H * self.barrier_bound_y) / CHUNKS * 1/2))
         shift_x, shift_y = np.linspace(start_center[0], -start_center[0], CHUNKS),\
@@ -300,20 +301,20 @@ class RoutePlan(gym.Env, EzPickle):
 
         """暗礁生成"""
         # reef generate test
-        reef_dict = {'center_point': [],
-                     'radius': []}
-        if self.seed_num is not None:
-            self.np_random.seed(self.seed_num)
-        while len(self.reef) < 5:
-            reef_position = (self.np_random.uniform(-5, 2),
-                             self.np_random.uniform(8, 13))
-            if self.isValid(reef_position, barrier_dict, reef_dict):
-                reef = self.world.CreateStaticBody(shapes=b2CircleShape(pos=reef_position,
-                                                   radius=0.36))
-                reef.hide = True
-                self.reef.append(reef)
-                reef_dict['center_point'].append(reef_position)
-                reef_dict['radius'].append(0.36)
+        # reef_dict = {'center_point': [],
+        #              'radius': []}
+        # if self.seed_num is not None:
+        #     self.np_random.seed(self.seed_num)
+        # while len(self.reef) < 5:
+        #     reef_position = (self.np_random.uniform(-5, 2),
+        #                      self.np_random.uniform(8, 13))
+        #     if self.isValid(reef_position, barrier_dict, reef_dict):
+        #         reef = self.world.CreateStaticBody(shapes=b2CircleShape(pos=reef_position,
+        #                                            radius=0.36))
+        #         reef.hide = True
+        #         self.reef.append(reef)
+        #         reef_dict['center_point'].append(reef_position)
+        #         reef_dict['radius'].append(0.36)
 
         """ship生成"""
         """!!!   已验证   !!!"""
@@ -328,9 +329,13 @@ class RoutePlan(gym.Env, EzPickle):
             initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
                                                         H * (1 - self.dead_area_bound))
         else:
+            # 判断worker是否使用循环
             random_position = self.iter_ship_pos.val
             initial_position_x, initial_position_y = random_position[0], random_position[1]
-            self.iter_ship_pos = self.iter_ship_pos.next
+            if self.iter_ship_pos.next is None:
+                self.end = True
+            else:
+                self.iter_ship_pos = self.iter_ship_pos.next
         """
         >>>help(Box2D.b2BodyDef)
         angularDamping: 角度阻尼
@@ -338,7 +343,6 @@ class RoutePlan(gym.Env, EzPickle):
         linearDamping：线性阻尼
         #### 增加线性阻尼可以使物体行动有摩擦
         """
-
         self.ship = self.world.CreateDynamicBody(
             position=(initial_position_x, initial_position_y),
             angle=0.0,
@@ -347,7 +351,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=3.5,
+                density=3.5 if self.test else 1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -451,35 +455,35 @@ class RoutePlan(gym.Env, EzPickle):
         vel2ship_proj = b2Dot(ship_unit_vect, vel_temp)
         """
 
-        # 11 维传感器数据字典
-        sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
-                          'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
-                          'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
-        # 传感器扫描
-        length = self.ship_radius * 10      # Set up the raycast line
-        point1 = self.ship.position
-        for vect in range(RAY_CAST_LASER_NUM):
-            ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
-            d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
-            point2 = point1 + d
-
-            # 初始化Raycast callback函数
-            callback = RayCastClosestCallback()
-
-            self.world.RayCast(callback, point1, point2)
-
-            if callback.hit:
-                sensor_raycast['points'][vect] = callback.point
-                sensor_raycast['normal'][vect] = callback.normal
-                if callback.fixture == self.reach_area.fixtures[0]:
-                    sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
-                elif callback.fixture in self.ground.fixtures:
-                    sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
-                else:
-                    sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
-            else:
-                sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
-        sensor_raycast['distance'][..., 1] /= self.ship_radius*10
+        # # 11 维传感器数据字典
+        # sensor_raycast = {"points": np.zeros((RAY_CAST_LASER_NUM, 2)),
+        #                   'normal': np.zeros((RAY_CAST_LASER_NUM, 2)),
+        #                   'distance': np.zeros((RAY_CAST_LASER_NUM, 2))}
+        # # 传感器扫描
+        # length = self.ship_radius * 10      # Set up the raycast line
+        # point1 = self.ship.position
+        # for vect in range(RAY_CAST_LASER_NUM):
+        #     ray_angle = self.ship.angle - b2_pi/2 + (b2_pi*2/RAY_CAST_LASER_NUM * vect)
+        #     d = (length * math.cos(ray_angle), length * math.sin(ray_angle))
+        #     point2 = point1 + d
+        #
+        #     # 初始化Raycast callback函数
+        #     callback = RayCastClosestCallback()
+        #
+        #     self.world.RayCast(callback, point1, point2)
+        #
+        #     if callback.hit:
+        #         sensor_raycast['points'][vect] = callback.point
+        #         sensor_raycast['normal'][vect] = callback.normal
+        #         if callback.fixture == self.reach_area.fixtures[0]:
+        #             sensor_raycast['distance'][vect] = (3, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #         elif callback.fixture in self.ground.fixtures:
+        #             sensor_raycast['distance'][vect] = (2, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #         else:
+        #             sensor_raycast['distance'][vect] = (1, Distance_Cacul(point1, callback.point) - self.ship_radius)
+        #     else:
+        #         sensor_raycast['distance'][vect] = (0, 10*self.ship_radius)
+        # sensor_raycast['distance'][..., 1] /= self.ship_radius*10
 
         pos = self.ship.position
         try:
@@ -514,12 +518,19 @@ class RoutePlan(gym.Env, EzPickle):
         ]
         assert len(state) == 6
         """
+        # state = [
+        #     end_info.distance,
+        #     end_ori/b2_pi,
+        #     [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
+        # ]
+        # assert len(state) == 3
+
         state = [
+            (pos.x - self.reach_area.position.x) / 8,
+            (pos.y - self.reach_area.position.y) / 16,
             end_info.distance,
-            end_ori/b2_pi,
-            [sensor_info for sensor_info in sensor_raycast['distance'].reshape(-1)]
-        ]
-        assert len(state) == 3
+            end_ori / b2_pi]
+        assert len(state) == 4
 
         """Reward 计算"""
         done = False
@@ -531,10 +542,11 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         if self.dist_record is not None and self.dist_record < end_info.distance:
-            reward_dist = -1
+            reward_dist = -end_info.distance / self.dist_init
+            # reward_dist = -1
         else:
-            # reward_dist = 1 - end_info.distance / self.dist_init
-            reward_dist = 2
+            reward_dist = 1 - end_info.distance / self.dist_init
+            # reward_dist = 1
             self.dist_record = end_info.distance
 
         reward = self.heat_map[pos_mapping[0], pos_mapping[1]] + reward_dist
@@ -605,6 +617,8 @@ class RoutePlan(gym.Env, EzPickle):
 
 
 def Distance_Cacul(pointA, pointB):
+    pointA = np.array(pointA, dtype='float')
+    pointB = np.array(pointB, dtype='float')
     cx = pointA[0] - pointB[0]
     cy = pointA[1] - pointB[1]
     return math.sqrt(cx * cx + cy * cy)
@@ -633,16 +647,23 @@ def manual_control(key):
 
 
 def demo_route_plan(env, seed=None, render=False):
-    global action
+    # global action
     env.seed(seed)
+
+    # ---------------------------------------------------------------- #
+    env.ship.position = b2Vec2(1, 6.5)
+    env.ship.angle = -0.16
+    # ---------------------------------------------------------------- #
+
     total_reward = 0
     steps = 0
-    keyboard.hook(manual_control)
+    # keyboard.hook(manual_control)
     while True:
 
         if not steps % 5:
+            action = np.zeros((2, ))
             s, r, done, info = env.step(action)
-            action = [0, 0]
+
             total_reward += r
 
         if render:

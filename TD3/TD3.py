@@ -97,14 +97,14 @@ class TD3:
         pixel = torch.FloatTensor(pixel_state).to(self.device)
         vect = torch.FloatTensor(vect_state).to(self.device)
         logits = self.actor_model(pixel, vect)
-        if self.train:
+        if not self.train:
             # acc 动作裁剪
             logits[..., 0] = (logits[..., 0] + self.noise.sample()).clamp_(min=0.3, max=1)
             # ori 动做裁剪
             logits[..., 1] = (logits[..., 1] + self.noise.sample()).clamp_(min=self.action_space.min(),
                                                                            max=self.action_space.max())
         else:
-            logits[..., 0] = logits[..., 0].clamp_(min=0.5, max=1)
+            logits[..., 0] = logits[..., 0].clamp_(min=0.3, max=1)
             logits[..., 1] = logits[..., 1].clamp_(min=self.action_space.min(), max=self.action_space.max())
         return logits.detach().cpu().numpy()
 
@@ -123,13 +123,13 @@ class TD3:
             with torch.no_grad():
                 self.model_soft_update(self.actor_model, self.actor_target)
                 self.model_soft_update(self.critic_model, self.critic_target)
-
-        self.logger.add_scalar(tag='actor_loss',
-                               scalar_value=self.actor_loss_history,
-                               global_step=self.t)
-        self.logger.add_scalar(tag='critic_loss',
-                               scalar_value=self.critic_loss_history,
-                               global_step=self.t)
+        if self.train:
+            self.logger.add_scalar(tag='actor_loss',
+                                   scalar_value=self.actor_loss_history,
+                                   global_step=self.t)
+            self.logger.add_scalar(tag='critic_loss',
+                                   scalar_value=self.critic_loss_history,
+                                   global_step=self.t)
 
     # critic theta1为更新主要网络，theta2用于辅助更新
     def action_update(self, pixel_state, vect_state):

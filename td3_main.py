@@ -27,7 +27,7 @@ def parse_args():
         description='TD3 config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=800,
+                        default=600,
                         type=int)
     parser.add_argument('--train',
                         help='Train or not',
@@ -66,7 +66,7 @@ def parse_args():
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=2+24*2,
+                        default=4,
                         type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
@@ -108,7 +108,7 @@ def main(args):
         seed = None
 
     # 环境与agent初始化
-    env = RoutePlan(barrier_num=3, seed=seed, ship_pos_fixed=True)
+    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True)
     # env.seed(13)
     env = SkipEnvFrame(env, args.frame_skipping)
     assert isinstance(args.batch_size, int)
@@ -226,7 +226,7 @@ def main(args):
         # 环境重置
         if not epoch % 25:
             env.close()
-            env = RoutePlan(barrier_num=EnvBarrierReset(epoch, start_barrier_num=3, train=args.train), seed=seed, ship_pos_fixed=True)
+            env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True)
             env = SkipEnvFrame(env, args.frame_skipping)
             if agent.logger_reload:
                 # reload changed heatmap
@@ -238,17 +238,6 @@ def main(args):
             agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}_opt-{args.seed}_{args.batch_size}_{args.state_length}.pth')
     env.close()
     tb_logger.close()
-
-
-def EnvBarrierReset(ep, *, start_barrier_num, train=True):
-    if ep < 100 and train:
-        return start_barrier_num
-    elif 100 <= ep < 250:
-        return start_barrier_num * 2
-    elif 250 <= ep < 450:
-        return start_barrier_num * 3
-    elif 450 <= ep or not train:
-        return start_barrier_num * 5
 
 
 if __name__ == '__main__':
