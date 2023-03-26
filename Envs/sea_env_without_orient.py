@@ -320,14 +320,22 @@ class RoutePlan(gym.Env, EzPickle):
         """!!!   已验证   !!!"""
         initial_position_x, initial_position_y = None, None
         if self.ship_pos_fixed is None:
-            if self.seed_num is not None:
-                self.np_random.seed(self.seed_num)
+            # if self.seed_num is not None:
+            #     self.np_random.seed(self.seed_num)
+            # initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
+            #                                             -W * self.barrier_bound_x / 2)
             initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
-                                                        -W * self.barrier_bound_x / 2)
-            if self.seed_num is not None:
-                self.np_random.seed(self.seed_num)
-            initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
-                                                        H * (1 - self.dead_area_bound))
+                                                        W * self.barrier_bound_x/2)
+            if initial_position_x < - 1/2 * self.barrier_bound_x * W:
+                # if self.seed_num is not None:
+                #     self.np_random.seed(self.seed_num)
+                initial_position_y = self.np_random.uniform(H * self.dead_area_bound,
+                                                            H * (1 - self.dead_area_bound))
+            elif - 1/2 * self.barrier_bound_x * W < initial_position_x:
+                # if self.seed_num is not None:
+                #     self.np_random.seed(self.seed_num)
+                initial_position_y = random.choice([self.np_random.uniform(H * self.dead_area_bound, H * (1-self.barrier_bound_y)),
+                                      (self.np_random.uniform(H * self.barrier_bound_y, H * (1-self.dead_area_bound)))])
         else:
             # 判断worker是否使用循环
             random_position = self.iter_ship_pos.val
@@ -525,12 +533,17 @@ class RoutePlan(gym.Env, EzPickle):
         # ]
         # assert len(state) == 3
 
+        # state = [
+        #     (pos.x - self.reach_area.position.x) / 8,
+        #     (pos.y - self.reach_area.position.y) / 16,
+        #     end_info.distance,
+        #     end_ori / b2_pi]
+        # assert len(state) == 4
+
         state = [
-            (pos.x - self.reach_area.position.x) / 8,
-            (pos.y - self.reach_area.position.y) / 16,
             end_info.distance,
             end_ori / b2_pi]
-        assert len(state) == 4
+        assert len(state) == 2
 
         """Reward 计算"""
         done = False

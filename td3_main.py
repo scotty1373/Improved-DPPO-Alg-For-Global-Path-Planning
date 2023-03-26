@@ -27,7 +27,7 @@ def parse_args():
         description='TD3 config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=600,
+                        default=300,
                         type=int)
     parser.add_argument('--train',
                         help='Train or not',
@@ -66,7 +66,7 @@ def parse_args():
     #                     default=5+24*2)
     parser.add_argument('--state_length',
                         help='state data vector length',
-                        default=4,
+                        default=2,
                         type=int)
     parser.add_argument('--pixel_state',
                         help='Image-Based Status',
@@ -78,7 +78,7 @@ def parse_args():
                         type=str)
     parser.add_argument('--replay_buffer_size',
                         help='Replay Buffer Size',
-                        default=32000,
+                        default=12000,
                         type=int)
     args = parser.parse_args()
     return args
@@ -94,7 +94,7 @@ def main(args):
     # # epoch log初始化
     # logger_ep = log2json(filename='train_log_ep', type_json=True)
     # tensorboard初始化
-    tb_logger = SummaryWriter(log_dir=f"./log/{TIMESTAMP}", flush_secs=120)
+    tb_logger = SummaryWriter(log_dir=f"./log/{TIMESTAMP}_td3_random_start", flush_secs=120)
     replay_buffer = ReplayBuffer(max_lens=args.replay_buffer_size,
                                  frame_overlay=args.frame_overlay,
                                  state_length=args.state_length,
@@ -108,7 +108,7 @@ def main(args):
         seed = None
 
     # 环境与agent初始化
-    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True)
+    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=None)
     # env.seed(13)
     env = SkipEnvFrame(env, args.frame_skipping)
     assert isinstance(args.batch_size, int)
@@ -226,7 +226,7 @@ def main(args):
         # 环境重置
         if not epoch % 25:
             env.close()
-            env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=True)
+            env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=None)
             env = SkipEnvFrame(env, args.frame_skipping)
             if agent.logger_reload:
                 # reload changed heatmap
@@ -235,7 +235,7 @@ def main(args):
                 trace_image = env.render(mode='rgb_array')
                 trace_image = Image.fromarray(trace_image)
                 trace_path = ImageDraw.Draw(trace_image)
-            agent.save_model(f'./log/{TIMESTAMP}/save_model_ep{epoch}_opt-{args.seed}_{args.batch_size}_{args.state_length}.pth')
+            agent.save_model(f'./log/{TIMESTAMP}_td3_random_start/save_model_ep{epoch}_opt-{args.seed}_{args.batch_size}_{args.state_length}.pth')
     env.close()
     tb_logger.close()
 

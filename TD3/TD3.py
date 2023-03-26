@@ -97,7 +97,7 @@ class TD3:
         pixel = torch.FloatTensor(pixel_state).to(self.device)
         vect = torch.FloatTensor(vect_state).to(self.device)
         logits = self.actor_model(pixel, vect)
-        if not self.train:
+        if self.train:
             # acc 动作裁剪
             logits[..., 0] = (logits[..., 0] + self.noise.sample()).clamp_(min=0.3, max=1)
             # ori 动做裁剪
