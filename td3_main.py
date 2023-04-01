@@ -27,7 +27,7 @@ def parse_args():
         description='TD3 config option')
     parser.add_argument('--epochs',
                         help='Training epoch',
-                        default=300,
+                        default=600,
                         type=int)
     parser.add_argument('--train',
                         help='Train or not',
@@ -78,7 +78,7 @@ def parse_args():
                         type=str)
     parser.add_argument('--replay_buffer_size',
                         help='Replay Buffer Size',
-                        default=12000,
+                        default=32000,
                         type=int)
     args = parser.parse_args()
     return args
@@ -108,7 +108,7 @@ def main(args):
         seed = None
 
     # 环境与agent初始化
-    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=None)
+    env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=False)
     # env.seed(13)
     env = SkipEnvFrame(env, args.frame_skipping)
     assert isinstance(args.batch_size, int)
@@ -155,7 +155,7 @@ def main(args):
     pixel_obs = None
     obs = None
 
-    epochs = tqdm(range(args.epochs), leave=False, position=0, colour='green')
+    epochs = tqdm(range(args.epochs + 1), leave=False, position=0, colour='green')
     for epoch in epochs:
         reward_history = 0
         """***********这部分作为重置并没有起到训练连接的作用， 可删除if判断***********"""
@@ -226,7 +226,7 @@ def main(args):
         # 环境重置
         if not epoch % 25:
             env.close()
-            env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=None)
+            env = RoutePlan(barrier_num=5, seed=seed, ship_pos_fixed=False)
             env = SkipEnvFrame(env, args.frame_skipping)
             if agent.logger_reload:
                 # reload changed heatmap

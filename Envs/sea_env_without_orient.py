@@ -319,7 +319,7 @@ class RoutePlan(gym.Env, EzPickle):
         """ship生成"""
         """!!!   已验证   !!!"""
         initial_position_x, initial_position_y = None, None
-        if self.ship_pos_fixed is None:
+        if not self.ship_pos_fixed:
             # if self.seed_num is not None:
             #     self.np_random.seed(self.seed_num)
             # initial_position_x = self.np_random.uniform(-W * (0.5 - self.dead_area_bound),
@@ -359,7 +359,7 @@ class RoutePlan(gym.Env, EzPickle):
             fixedRotation=True,
             fixtures=b2FixtureDef(
                 shape=b2PolygonShape(vertices=[(x/SCALE, y/SCALE) for x, y in SHIP_POLY]),
-                density=3.5 if self.test else 1,
+                density=1 if self.test else 1,
                 friction=1,
                 categoryBits=0x0010,
                 maskBits=0x001,     # collide only with ground
@@ -555,11 +555,11 @@ class RoutePlan(gym.Env, EzPickle):
             reward_vel = 0
 
         if self.dist_record is not None and self.dist_record < end_info.distance:
-            reward_dist = -end_info.distance / self.dist_init
-            # reward_dist = -1
+            # reward_dist = -end_info.distance / self.dist_init
+            reward_dist = -1
         else:
-            reward_dist = 1 - end_info.distance / self.dist_init
-            # reward_dist = 1
+            # reward_dist = 1 - end_info.distance / self.dist_init
+            reward_dist = 1
             self.dist_record = end_info.distance
 
         reward = self.heat_map[pos_mapping[0], pos_mapping[1]] + reward_dist

@@ -41,7 +41,7 @@ def parse_args():
                         type=bool)
     parser.add_argument('--checkpoint',
                         help='If pre_trained is True, this option is pretrained ckpt path',
-                        default='./log/1679812166_td3_random_start/save_model_ep225_opt-42_64_2.pth',
+                        default='./log/1680087286_td3_random_start/save_model_ep50_opt-42_64_2.pth',
                         type=str)
     parser.add_argument('--max_timestep',
                         help='Maximum time step in a single epoch',
