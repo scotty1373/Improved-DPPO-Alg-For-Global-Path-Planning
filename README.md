@@ -6,7 +6,7 @@
 
 ### Paper Link: 
 
-[An Improved Distributed Sampling PPO Algorithm Based on Beta Policy for Continuous Global Path Planning Scheme]: https://www.mdpi.com/1424-8220/23/13/6101#metrics
+[An Improved Distributed Sampling PPO Algorithm Based on Beta Policy for Continuous Global Path Planning Scheme](https://www.mdpi.com/1424-8220/23/13/6101#metrics)
 
 ### Errata:
 
